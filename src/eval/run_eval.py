@@ -137,7 +137,7 @@ def evaluate_model(
     max_tokens: int = 2048,
     temperature: float = 0.0,
     tensor_parallel_size: int = 1,
-    max_model_len: int = 4096,
+    max_model_len: int | None = 4096,
 ) -> dict:
     """Run evaluation and return results dict."""
     print(f"\n{'='*60}")
@@ -145,13 +145,15 @@ def evaluate_model(
     print(f"Problems:   {len(problems)}")
     print(f"{'='*60}")
 
-    llm = LLM(
+    llm_kwargs = dict(
         model=model_name,
         tensor_parallel_size=tensor_parallel_size,
-        max_model_len=max_model_len,
         trust_remote_code=True,
         dtype="bfloat16",
     )
+    if max_model_len is not None:
+        llm_kwargs["max_model_len"] = max_model_len
+    llm = LLM(**llm_kwargs)
     tokenizer = llm.get_tokenizer()
     sampling_params = SamplingParams(
         temperature=temperature,
@@ -313,7 +315,9 @@ def main():
     parser.add_argument("--max_tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--tensor_parallel_size", type=int, default=1)
-    parser.add_argument("--max_model_len", type=int, default=4096)
+    parser.add_argument("--max_model_len", type=int, default=4096,
+                        help="Max context length for vLLM KV cache. Use 0 for model default.")
+
     args = parser.parse_args()
 
     # root dir
@@ -335,7 +339,7 @@ def main():
             max_tokens=args.max_tokens,
             temperature=args.temperature,
             tensor_parallel_size=args.tensor_parallel_size,
-            max_model_len=args.max_model_len,
+            max_model_len=args.max_model_len or None,
         )
         print_report(eval_output)
         save_results(eval_output, output_dir)

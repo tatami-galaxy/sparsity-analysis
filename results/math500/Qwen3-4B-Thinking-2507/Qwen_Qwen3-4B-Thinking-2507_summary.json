@@ -1,71 +1,71 @@
 {
   "model": "Qwen/Qwen3-4B-Thinking-2507",
   "dataset_size": 500,
-  "overall_accuracy": 0.394,
-  "elapsed_s": 92.48795652389526,
+  "overall_accuracy": 0.006,
+  "elapsed_s": 0.7718117237091064,
   "by_level": {
     "1": {
-      "correct": 33,
+      "correct": 0,
       "total": 43,
-      "accuracy": 0.7674418604651163
+      "accuracy": 0.0
     },
     "2": {
-      "correct": 53,
+      "correct": 3,
       "total": 90,
-      "accuracy": 0.5888888888888889
+      "accuracy": 0.03333333333333333
     },
     "3": {
-      "correct": 49,
+      "correct": 0,
       "total": 105,
-      "accuracy": 0.4666666666666667
+      "accuracy": 0.0
     },
     "4": {
-      "correct": 37,
+      "correct": 0,
       "total": 128,
-      "accuracy": 0.2890625
+      "accuracy": 0.0
     },
     "5": {
-      "correct": 25,
+      "correct": 0,
       "total": 134,
-      "accuracy": 0.1865671641791045
+      "accuracy": 0.0
     }
   },
   "by_subject": {
     "Algebra": {
-      "correct": 72,
+      "correct": 0,
       "total": 124,
-      "accuracy": 0.5806451612903226
+      "accuracy": 0.0
     },
     "Counting & Probability": {
-      "correct": 17,
+      "correct": 0,
       "total": 38,
-      "accuracy": 0.4473684210526316
+      "accuracy": 0.0
     },
     "Geometry": {
-      "correct": 14,
+      "correct": 0,
       "total": 41,
-      "accuracy": 0.34146341463414637
+      "accuracy": 0.0
     },
     "Intermediate Algebra": {
-      "correct": 17,
+      "correct": 0,
       "total": 97,
-      "accuracy": 0.17525773195876287
+      "accuracy": 0.0
     },
     "Number Theory": {
-      "correct": 23,
+      "correct": 0,
       "total": 62,
-      "accuracy": 0.3709677419354839
+      "accuracy": 0.0
     },
     "Prealgebra": {
-      "correct": 48,
+      "correct": 3,
       "total": 82,
-      "accuracy": 0.5853658536585366
+      "accuracy": 0.036585365853658534
     },
     "Precalculus": {
-      "correct": 6,
+      "correct": 0,
       "total": 56,
-      "accuracy": 0.10714285714285714
+      "accuracy": 0.0
     }
   },
-  "extraction_failures": 0
+  "extraction_failures": 459
 }
