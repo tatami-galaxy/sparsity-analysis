@@ -40,9 +40,6 @@ sparsity-analysis/
 │   ├── analysis/        # Post-hoc sparsity, rank, and overlap analysis
 │   └── utils/           # Shared utilities (weight snapshots, metrics, logging)
 ├── results/
-│   ├── checkpoints/     # Saved model weights
-│   ├── figures/         # Generated plots
-│   └── logs/            # Training logs
 └── README.md
 ```
 

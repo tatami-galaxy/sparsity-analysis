@@ -36,6 +36,7 @@ from math_verify.parser import (
     ExprExtractionConfig,
     LatexExtractionConfig,
 )
+from src.utils.utils import get_root_dir
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +125,7 @@ def is_equiv(pred: str, gold: str) -> bool:
     if gold_parsed is None or pred_parsed is None:
         return False
     try:
+        # TODO : too many false negatives
         return verify(gold_parsed, pred_parsed)
     except Exception:
         return False
@@ -158,7 +160,6 @@ def evaluate_model(
 
     # Build prompts
     prompts = []
-    # TODO : test prompts
     for p in problems:
         messages = format_prompt(p["problem"])
         text = tokenizer.apply_chat_template(
@@ -308,12 +309,15 @@ def main():
         "--levels", nargs="*", type=int, default=None,
         help="Filter to specific MATH difficulty levels (1-5)",
     )
-    parser.add_argument("--output_dir", default="results/eval")
+    parser.add_argument("--output_dir", default="eval")
     parser.add_argument("--max_tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--tensor_parallel_size", type=int, default=1)
     parser.add_argument("--max_model_len", type=int, default=4096)
     args = parser.parse_args()
+
+    # root dir
+    root = get_root_dir()
 
     # Load dataset
     loader = DATASET_REGISTRY[args.dataset]
@@ -324,6 +328,7 @@ def main():
 
     # Evaluate each model
     for model_name in args.model:
+        output_dir = root+'/results/'+args.dataset+'/'+model_name.split('/')[-1]
         eval_output = evaluate_model(
             model_name=model_name,
             problems=problems,
@@ -333,7 +338,7 @@ def main():
             max_model_len=args.max_model_len,
         )
         print_report(eval_output)
-        save_results(eval_output, args.output_dir)
+        save_results(eval_output, output_dir)
 
 
 if __name__ == "__main__":
