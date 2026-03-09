@@ -33,13 +33,12 @@ Analyzing parameter update sparsity in SDFT vs RL vs SFT, bridging two key findi
 
 ```
 sparsity-analysis/
-├── configs/             # Training configs for each method
 ├── data/                # Dataset loading and preprocessing
 ├── src/
-│   ├── training/        # Training scripts (SDFT, SFT, GRPO, offline distil)
+│   ├── train/           # Training scripts (SDFT, SFT, GRPO, offline distil)
+    ├── eval/            # Evaluation code 
 │   ├── analysis/        # Post-hoc sparsity, rank, and overlap analysis
 │   └── utils/           # Shared utilities (weight snapshots, metrics, logging)
-├── scripts/             # Shell scripts to launch experiments
 ├── results/
 │   ├── checkpoints/     # Saved model weights
 │   ├── figures/         # Generated plots
