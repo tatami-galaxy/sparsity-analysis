@@ -105,11 +105,15 @@ def format_sft(example, answer_only: bool = False):
 # ---------------------------------------------------------------------------
 
 def save_theta_init(model: AutoModelForCausalLM, output_dir: str):
-    """Save initial model weights for sparsity analysis.
+    """Save initial model weights for sparsity analysis. Only runs on main process.
 
     Saves a state_dict mapping parameter names to their initial values.
     This is used to compute |theta_final - theta_init| after training.
     """
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    if local_rank != 0:
+        return
+
     theta_init_dir = os.path.join(output_dir, "theta_init")
     os.makedirs(theta_init_dir, exist_ok=True)
 
@@ -266,6 +270,7 @@ def main():
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--learning_rate", type=float, default=2e-5)
+    parser.add_argument("--lr_scheduler_type", type=str, default="constant")
     parser.add_argument("--warmup_steps", type=int, default=10)
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--max_seq_length", type=int, default=4096)

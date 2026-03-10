@@ -9,6 +9,7 @@ results/sft/
 results/rl/
 results/sdft/
 results/sdpo/
+results/distil/
 theta_init/
 
 # IDE
