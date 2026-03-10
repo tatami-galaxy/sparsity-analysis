@@ -43,23 +43,6 @@ sparsity-analysis/
 └── README.md
 ```
 
-## Usage
-
-```bash
-# 1. Prepare data
-python -m data.prepare_math
-
-# 2. Run training (see scripts/ for launch commands)
-bash scripts/run_sdft_trace.sh
-bash scripts/run_sft_trace.sh
-bash scripts/run_grpo.sh
-
-# 3. Analyze sparsity
-python -m src.analysis.sparsity --checkpoint results/checkpoints/<run>
-python -m src.analysis.rank --checkpoint results/checkpoints/<run>
-python -m src.analysis.overlap --runs results/checkpoints/sdft,results/checkpoints/grpo
-```
-
 ## References
 
 - Shenfeld et al. "Self-Distillation Enables Continual Learning" (arXiv:2601.19897)

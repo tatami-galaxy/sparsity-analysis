@@ -26,10 +26,11 @@ import json
 import os
 import time
 from collections import defaultdict
-from pathlib import Path
 
 from datasets import load_dataset
 from vllm import LLM, SamplingParams
+
+import re
 
 from math_verify import parse, verify
 from math_verify.parser import (
@@ -37,6 +38,102 @@ from math_verify.parser import (
     LatexExtractionConfig,
 )
 from src.utils.utils import get_root_dir
+
+
+# ---------------------------------------------------------------------------
+# Answer extraction and equivalence checking
+# ---------------------------------------------------------------------------
+
+PRED_EXTRACTION_CONFIG = [
+    LatexExtractionConfig(boxed_match_priority=0),
+    ExprExtractionConfig(),
+]
+GOLD_EXTRACTION_CONFIG = [
+    LatexExtractionConfig(),
+    ExprExtractionConfig(),
+]
+
+
+def extract_boxed_answer(text: str) -> str | None:
+    """Extract the last \\boxed{...} answer from text, handling nested braces."""
+    idx = text.rfind("\\boxed{")
+    if idx == -1:
+        return None
+    depth = 0
+    start = idx + len("\\boxed{")
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            if depth == 0:
+                return text[start:i]
+            depth -= 1
+    return None
+
+
+def _normalize(s: str) -> str:
+    """Normalize a math answer string for string comparison."""
+    s = s.strip()
+    if s.startswith("$") and s.endswith("$"):
+        s = s[1:-1].strip()
+    # Remove \text{} wrapper
+    m = re.fullmatch(r"\\text\{(.+)\}", s)
+    if m:
+        s = m.group(1).strip()
+    # Remove display commands
+    s = s.replace("\\left", "").replace("\\right", "")
+    s = s.replace("\\,", "").replace("\\;", "").replace("\\!", "")
+    s = re.sub(r"\\dfrac", r"\\frac", s)
+    s = s.rstrip(".")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _try_parse_number(s: str) -> float | None:
+    """Try to parse a string as a number (int, float, or simple fraction)."""
+    s = s.replace(",", "")
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    # a/b
+    m = re.fullmatch(r"(-?\d+)\s*/\s*(-?\d+)", s)
+    if m and int(m.group(2)) != 0:
+        return int(m.group(1)) / int(m.group(2))
+    # \frac{a}{b}
+    m = re.fullmatch(r"\\frac\{(-?\d+)\}\{(-?\d+)\}", s)
+    if m and int(m.group(2)) != 0:
+        return int(m.group(1)) / int(m.group(2))
+    # -\frac{a}{b}
+    m = re.fullmatch(r"-\\frac\{(\d+)\}\{(\d+)\}", s)
+    if m and int(m.group(2)) != 0:
+        return -int(m.group(1)) / int(m.group(2))
+    return None
+
+
+def is_equiv(pred: str, gold: str) -> bool:
+    """Check equivalence using layered strategies:
+    1. Normalized string match (fast, handles most cases)
+    2. Numeric comparison (fractions, decimals)
+    3. math_verify symbolic comparison (fallback for complex expressions)
+    """
+    pred_n = _normalize(pred)
+    gold_n = _normalize(gold)
+    # 1. Exact string match after normalization
+    if pred_n == gold_n:
+        return True
+    # 2. Numeric comparison
+    pred_v = _try_parse_number(pred_n)
+    gold_v = _try_parse_number(gold_n)
+    if pred_v is not None and gold_v is not None:
+        return abs(pred_v - gold_v) < 1e-6
+    # 3. Symbolic comparison via math_verify
+    try:
+        gold_parsed = parse(gold, extraction_config=GOLD_EXTRACTION_CONFIG)
+        pred_parsed = parse(pred, extraction_config=PRED_EXTRACTION_CONFIG)
+        return verify(gold_parsed, pred_parsed)
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -92,44 +189,7 @@ def format_prompt(problem: str) -> list[dict]:
 
 # ---------------------------------------------------------------------------
 # Evaluation
-# ---------------------------------------------------------------------------
-
-# For model outputs: prioritize \boxed{}, then fall back to other latex / expressions
-PRED_EXTRACTION_CONFIG = [
-    LatexExtractionConfig(boxed_match_priority=0),
-    ExprExtractionConfig(),
-]
-
-# For gold answers: typically a clean latex string
-GOLD_EXTRACTION_CONFIG = [
-    LatexExtractionConfig(),
-    ExprExtractionConfig(),
-]
-
-def parse_answer(text: str, is_gold: bool = False) -> list | None:
-    """Parse a math answer string into a verified representation.
-
-    Returns the parsed result or None if parsing fails.
-    """
-    config = GOLD_EXTRACTION_CONFIG if is_gold else PRED_EXTRACTION_CONFIG
-    try:
-        return parse(text, extraction_config=config)
-    except Exception:
-        return None
-
-
-def is_equiv(pred: str, gold: str) -> bool:
-    """Check if predicted and gold answers are mathematically equivalent."""
-    gold_parsed = parse_answer(gold, is_gold=True)
-    pred_parsed = parse_answer(pred, is_gold=False)
-    if gold_parsed is None or pred_parsed is None:
-        return False
-    try:
-        # TODO : too many false negatives
-        return verify(gold_parsed, pred_parsed)
-    except Exception:
-        return False
-    
+# ---------------------------------------------------------------------------    
 
 def evaluate_model(
     model_name: str,
@@ -179,12 +239,12 @@ def evaluate_model(
     results = []
     for prob, output in zip(problems, outputs):
         response = output.outputs[0].text
-        pred_parsed = parse_answer(response, is_gold=False)
-        correct = is_equiv(response, prob["answer"]) if pred_parsed else False
+        pred_answer = extract_boxed_answer(response)
+        correct = is_equiv(pred_answer, prob["answer"]) if pred_answer else False
         results.append({
             **prob,
             "response": response,
-            "pred_answer": str(pred_parsed) if pred_parsed else None,
+            "pred_answer": pred_answer,
             "correct": correct,
         })
 

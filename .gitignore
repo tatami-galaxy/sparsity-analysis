@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# Training artifacts
+results/sft/
+results/rl/
+results/sdft/
+results/sdpo/
+theta_init/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
