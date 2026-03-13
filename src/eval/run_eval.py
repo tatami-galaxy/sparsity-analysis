@@ -37,7 +37,6 @@ from math_verify.parser import (
     ExprExtractionConfig,
     LatexExtractionConfig,
 )
-from src.utils.utils import get_root_dir
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +148,22 @@ def register_dataset(name):
         DATASET_REGISTRY[name] = fn
         return fn
     return wrapper
+
+
+@register_dataset("minerva_math")
+def load_minerva_math(levels: list[int] | None = None) -> list[dict]:
+    ds = load_dataset("math-ai/minervamath", split="test")
+    out = []
+    for row in ds:
+        out.append({
+            "problem": row["question"],
+            "answer": row["answer"],
+            "solution": "",
+            "level": 0,
+            "subject": "",
+            "unique_id": "",
+        })
+    return out
 
 
 @register_dataset("math500")
@@ -371,7 +386,7 @@ def main():
         "--levels", nargs="*", type=int, default=None,
         help="Filter to specific MATH difficulty levels (1-5)",
     )
-    parser.add_argument("--output_dir", default="eval")
+    parser.add_argument("--output_dir", default="results")
     parser.add_argument("--max_tokens", type=int, default=2048)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--tensor_parallel_size", type=int, default=1)
@@ -379,9 +394,6 @@ def main():
                         help="Max context length for vLLM KV cache. Use 0 for model default.")
 
     args = parser.parse_args()
-
-    # root dir
-    root = get_root_dir()
 
     # Load dataset
     loader = DATASET_REGISTRY[args.dataset]
@@ -392,7 +404,7 @@ def main():
 
     # Evaluate each model
     for model_name in args.model:
-        output_dir = root+'/results/'+args.dataset+'/'+model_name.split('/')[-1]
+        output_dir = args.output_dir+'/'+args.dataset+'/'+model_name.split('/')[-1]
         eval_output = evaluate_model(
             model_name=model_name,
             problems=problems,

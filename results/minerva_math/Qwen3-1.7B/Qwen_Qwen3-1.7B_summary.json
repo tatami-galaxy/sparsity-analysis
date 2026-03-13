@@ -1,0 +1,21 @@
+{
+  "model": "Qwen/Qwen3-1.7B",
+  "dataset_size": 272,
+  "overall_accuracy": 0.2610294117647059,
+  "elapsed_s": 921.6586081981659,
+  "by_level": {
+    "0": {
+      "correct": 71,
+      "total": 272,
+      "accuracy": 0.2610294117647059
+    }
+  },
+  "by_subject": {
+    "": {
+      "correct": 71,
+      "total": 272,
+      "accuracy": 0.2610294117647059
+    }
+  },
+  "extraction_failures": 15
+}
