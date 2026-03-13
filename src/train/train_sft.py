@@ -11,6 +11,8 @@ Usage:
         --num_train_epochs 2 \
         --learning_rate 5e-6
 
+    CUDA_VISIBLE_DEVICES=4,5 uv run accelerate launch --config_file configs/ds_zero2.yaml -m src.train.train_sft --model meta-llama/Llama-3.1-8B-Instruct
+
     # Filter by source (e.g. only olympiad problems)
     python -m src.train.train_sft \
         --model meta-llama/Llama-3.1-8B-Instruct \
@@ -268,7 +270,7 @@ def main():
     parser.add_argument("--save_steps", type=int, default=1000)
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
     parser.add_argument("--learning_rate", type=float, default=2e-5)
     parser.add_argument("--lr_scheduler_type", type=str, default="constant")
     parser.add_argument("--warmup_steps", type=int, default=10)
