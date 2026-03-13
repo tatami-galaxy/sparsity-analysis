@@ -267,10 +267,10 @@ def main():
     #parser.add_argument("--num_train_epochs", type=int, default=1)
     # max_steps overrides num_train_epochs
     parser.add_argument("--max_steps", type=int, default=10000)
-    parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--save_steps", type=int, default=100)
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--learning_rate", type=float, default=2e-5)
     parser.add_argument("--lr_scheduler_type", type=str, default="constant")
     parser.add_argument("--warmup_steps", type=int, default=10)

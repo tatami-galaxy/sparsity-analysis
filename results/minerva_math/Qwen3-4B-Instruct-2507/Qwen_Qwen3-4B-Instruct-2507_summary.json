@@ -1,0 +1,21 @@
+{
+  "model": "Qwen/Qwen3-4B-Instruct-2507",
+  "dataset_size": 272,
+  "overall_accuracy": 0.2867647058823529,
+  "elapsed_s": 214.17041969299316,
+  "by_level": {
+    "0": {
+      "correct": 78,
+      "total": 272,
+      "accuracy": 0.2867647058823529
+    }
+  },
+  "by_subject": {
+    "": {
+      "correct": 78,
+      "total": 272,
+      "accuracy": 0.2867647058823529
+    }
+  },
+  "extraction_failures": 1
+}
