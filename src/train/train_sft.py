@@ -178,6 +178,12 @@ def train(args):
         num_proc=4,
     )
 
+    # Train/eval split
+    split = ds.train_test_split(test_size=args.eval_size, seed=args.seed)
+    train_ds = split["train"]
+    eval_ds = split["test"]
+    print(f"  Train split: {len(train_ds)}, Eval split: {len(eval_ds)}")
+
     # Training config
     training_args = SFTConfig(
         output_dir=args.output_dir,
@@ -197,6 +203,9 @@ def train(args):
         save_strategy="steps",
         save_steps=args.save_steps,
         save_total_limit=None,  # keep all checkpoints for sparsity analysis
+        eval_strategy="steps",
+        eval_steps=args.eval_steps,
+        per_device_eval_batch_size=args.per_device_batch_size,
         seed=args.seed,
         report_to="tensorboard",
     )
@@ -205,17 +214,19 @@ def train(args):
     trainer = SFTTrainer(
         model=model,
         args=training_args,
-        train_dataset=ds,
+        train_dataset=train_ds,
+        eval_dataset=eval_ds,
         processing_class=tokenizer,
     )
 
     # Print training plan
     num_devices = max(torch.cuda.device_count(), 1)
     effective_batch = args.per_device_batch_size * args.gradient_accumulation_steps * num_devices
-    steps_per_epoch = len(ds) // effective_batch
+    steps_per_epoch = len(train_ds) // effective_batch
     print(f"\n{'='*60}")
     print(f"Training plan:")
-    print(f"  Dataset size:        {len(ds)}")
+    print(f"  Train size:          {len(train_ds)}")
+    print(f"  Eval size:           {len(eval_ds)}")
     print(f"  Devices:             {num_devices}")
     print(f"  Per-device batch:    {args.per_device_batch_size}")
     print(f"  Grad accum steps:    {args.gradient_accumulation_steps}")
@@ -224,6 +235,7 @@ def train(args):
     print(f"  Max steps:           {args.max_steps}")
     print(f"  Log every:           {args.logging_steps} steps")
     print(f"  Save every:          {args.save_steps} steps")
+    print(f"  Eval every:          {args.eval_steps} steps")
     print(f"  Warmup steps:        {args.warmup_steps}")
     print(f"  Learning rate:       {args.learning_rate}")
     print(f"{'='*60}\n")
@@ -268,10 +280,12 @@ def main():
     # max_steps overrides num_train_epochs
     parser.add_argument("--max_steps", type=int, default=10000)
     parser.add_argument("--save_steps", type=int, default=100)
+    parser.add_argument("--eval_steps", type=int, default=100)
+    parser.add_argument("--eval_size", type=int, default=500, help="Number of examples to hold out for eval")
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
-    parser.add_argument("--learning_rate", type=float, default=2e-5)
+    parser.add_argument("--learning_rate", type=float, default=5e-6)
     parser.add_argument("--lr_scheduler_type", type=str, default="constant")
     parser.add_argument("--warmup_steps", type=int, default=10)
     parser.add_argument("--weight_decay", type=float, default=0.01)
