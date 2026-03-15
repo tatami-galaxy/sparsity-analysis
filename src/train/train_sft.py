@@ -170,10 +170,12 @@ class EvalAccuracyCallback(TrainerCallback):
             input_text = self.tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
+            # input prompt set to 2048 max
             inputs = self.tokenizer(
                 input_text, return_tensors="pt", truncation=True, max_length=2048
             ).to(model.device)
 
+            # TODO : change to sampling instead of greedy?
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
@@ -284,7 +286,7 @@ def train(args):
         logging_steps=args.logging_steps,
         save_strategy="steps",
         save_steps=args.save_steps,
-        save_total_limit=None,  # keep all checkpoints for sparsity analysis
+        save_total_limit=args.save_total_limit,  # TODO : None to keep all checkpoints for sparsity analysis
         eval_strategy="steps",
         eval_steps=args.eval_steps,
         per_device_eval_batch_size=args.per_device_batch_size,
@@ -371,9 +373,10 @@ def main():
     # max_steps overrides num_train_epochs
     parser.add_argument("--max_steps", type=int, default=10000)
     parser.add_argument("--save_steps", type=int, default=100)
+    parser.add_argument("--save_total_limit", type=int, default=None)
     parser.add_argument("--eval_steps", type=int, default=100)
     parser.add_argument("--eval_size", type=int, default=500, help="Number of examples to hold out for eval")
-    parser.add_argument("--eval_gen_size", type=int, default=50, help="Number of eval problems to generate on for accuracy (subset of eval_size)")
+    parser.add_argument("--eval_gen_size", type=int, default=100, help="Number of eval problems to generate on for accuracy (subset of eval_size)")
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
