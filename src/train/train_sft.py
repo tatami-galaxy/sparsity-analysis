@@ -32,8 +32,10 @@ import os
 
 import torch
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
 from trl import SFTConfig, SFTTrainer
+
+from src.eval.run_eval import extract_boxed_answer, is_equiv, SYSTEM_PROMPT as EVAL_SYSTEM_PROMPT
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +133,78 @@ def save_theta_init(model: AutoModelForCausalLM, output_dir: str):
 
 
 # ---------------------------------------------------------------------------
+# Eval accuracy callback
+# ---------------------------------------------------------------------------
+
+"""
+on_train_begin / on_train_end
+on_epoch_begin / on_epoch_end
+on_step_begin / on_step_end
+on_evaluate          ← we use this one
+on_save
+on_log
+"""
+class EvalAccuracyCallback(TrainerCallback):
+    """Generate on held-out problems at each eval step and log accuracy."""
+
+    def __init__(self, eval_problems: list[dict], tokenizer, max_new_tokens: int = 2048):
+        self.eval_problems = eval_problems
+        self.tokenizer = tokenizer
+        self.max_new_tokens = max_new_tokens
+
+    @torch.no_grad()
+    def on_evaluate(self, args, state, control, model, **kwargs):
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        if local_rank != 0:
+            return
+
+        model.eval()
+        correct = 0
+        extraction_failures = 0
+
+        for prob in self.eval_problems:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prob["problem"]},
+            ]
+            input_text = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            inputs = self.tokenizer(
+                input_text, return_tensors="pt", truncation=True, max_length=2048
+            ).to(model.device)
+
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=False,
+            )
+            # Decode only the generated tokens
+            response = self.tokenizer.decode(
+                outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
+            )
+            pred_answer = extract_boxed_answer(response)
+            if pred_answer is None:
+                extraction_failures += 1
+                continue
+            if is_equiv(pred_answer, prob["answer"]):
+                correct += 1
+
+        total = len(self.eval_problems)
+        accuracy = correct / total if total else 0
+        print(
+            f"\n[Step {state.global_step}] Eval accuracy: "
+            f"{correct}/{total} = {accuracy*100:.1f}% "
+            f"(extraction failures: {extraction_failures})"
+        )
+
+        # Log to tensorboard via trainer's log method
+        metrics = kwargs.get("metrics", {})
+        metrics["eval_accuracy"] = accuracy
+        metrics["eval_extraction_failures"] = extraction_failures
+
+
+# ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
 
@@ -171,17 +245,25 @@ def train(args):
     if sources:
         print(f"  Filtered to sources: {sources}")
 
-    ds = ds.map(
+    # Split before formatting so we keep raw eval problems for accuracy
+    split = ds.train_test_split(test_size=args.eval_size, seed=args.seed)
+    raw_eval_problems = [
+        {"problem": row["problem"], "answer": row["answer"]}
+        for row in split["test"]
+    ]
+
+    train_ds = split["train"].map(
         format_sft,
         fn_kwargs={"answer_only": args.answer_only},
-        remove_columns=ds.column_names,
+        remove_columns=split["train"].column_names,
         num_proc=4,
     )
-
-    # Train/eval split
-    split = ds.train_test_split(test_size=args.eval_size, seed=args.seed)
-    train_ds = split["train"]
-    eval_ds = split["test"]
+    eval_ds = split["test"].map(
+        format_sft,
+        fn_kwargs={"answer_only": args.answer_only},
+        remove_columns=split["test"].column_names,
+        num_proc=4,
+    )
     print(f"  Train split: {len(train_ds)}, Eval split: {len(eval_ds)}")
 
     # Training config
@@ -210,6 +292,14 @@ def train(args):
         report_to="tensorboard",
     )
 
+    # Eval accuracy callback (generate on a subset to keep eval fast)
+    eval_acc_problems = raw_eval_problems[:args.eval_gen_size]
+    eval_acc_callback = EvalAccuracyCallback(
+        eval_problems=eval_acc_problems,
+        tokenizer=tokenizer,
+        max_new_tokens=args.max_seq_length,
+    )
+
     # Trainer
     trainer = SFTTrainer(
         model=model,
@@ -217,6 +307,7 @@ def train(args):
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         processing_class=tokenizer,
+        callbacks=[eval_acc_callback],
     )
 
     # Print training plan
@@ -282,6 +373,7 @@ def main():
     parser.add_argument("--save_steps", type=int, default=100)
     parser.add_argument("--eval_steps", type=int, default=100)
     parser.add_argument("--eval_size", type=int, default=500, help="Number of examples to hold out for eval")
+    parser.add_argument("--eval_gen_size", type=int, default=50, help="Number of eval problems to generate on for accuracy (subset of eval_size)")
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
