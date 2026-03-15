@@ -80,6 +80,43 @@ def load_numinamath(
     return ds
 
 
+def load_competition_math(
+    max_samples: int | None = None,
+    seed: int = 42,
+) -> "Dataset":
+    """Load qwedsacf/competition_math and extract answers from solutions.
+
+    The dataset has no 'answer' column, so we extract boxed answers from the
+    'solution' field. Examples where extraction fails are dropped.
+    """
+    ds = load_dataset("qwedsacf/competition_math", split="train")
+
+    # Extract answer from solution (the dataset has no answer column)
+    def _extract_answer(example):
+        answer = extract_boxed_answer(example["solution"])
+        return {"answer": answer}
+
+    ds = ds.map(_extract_answer, num_proc=4)
+    # Drop examples where answer extraction failed
+    ds = ds.filter(lambda x: x["answer"] is not None and len(x["answer"].strip()) > 0, num_proc=4)
+
+    ds = ds.shuffle(seed=seed)
+
+    if max_samples:
+        ds = ds.select(range(min(max_samples, len(ds))))
+
+    return ds
+
+
+def load_math500() -> list[dict]:
+    """Load the full MATH-500 eval set."""
+    ds = load_dataset("HuggingFaceH4/MATH-500", split="test")
+    return [
+        {"problem": row["problem"], "answer": row["answer"]}
+        for row in ds
+    ]
+
+
 def format_sft(example, answer_only: bool = False):
     """Format a NuminaMath example into chat messages for SFT.
 
@@ -147,18 +184,25 @@ on_log
 class EvalAccuracyCallback(TrainerCallback):
     """Generate on held-out problems at each eval step and log accuracy."""
 
-    def __init__(self, eval_problems: list[dict], tokenizer, max_new_tokens: int = 2048):
+    def __init__(self, eval_problems: list[dict], tokenizer, max_new_tokens: int = 2048,
+                 default_generation_config: dict | None = None):
         self.eval_problems = eval_problems
         self.tokenizer = tokenizer
         self.max_new_tokens = max_new_tokens
+        self.default_generation_config = default_generation_config
 
     @torch.no_grad()
     def on_evaluate(self, args, state, control, model, **kwargs):
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        if local_rank != 0:
-            return
 
         model.eval()
+
+        # Restore default generation_config values for eval if they were
+        # cleared for SFT (some models ship with temperature/top_p set)
+        if self.default_generation_config:
+            model.generation_config.temperature = self.default_generation_config["temperature"]
+            model.generation_config.top_p = self.default_generation_config["top_p"]
+
         correct = 0
         extraction_failures = 0
 
@@ -175,11 +219,11 @@ class EvalAccuracyCallback(TrainerCallback):
                 input_text, return_tensors="pt", truncation=True, max_length=2048
             ).to(model.device)
 
-            # TODO : change to sampling instead of greedy?
+            # All ranks must participate in generate() for DeepSpeed all-gather
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
-                do_sample=False,
+                do_sample=True if self.default_generation_config else False,
             )
             # Decode only the generated tokens
             response = self.tokenizer.decode(
@@ -191,6 +235,15 @@ class EvalAccuracyCallback(TrainerCallback):
                 continue
             if is_equiv(pred_answer, prob["answer"]):
                 correct += 1
+
+        # Clear generation_config again for training
+        if self.default_generation_config:
+            model.generation_config.temperature = None
+            model.generation_config.top_p = None
+
+        # Only log on rank 0
+        if local_rank != 0:
+            return
 
         total = len(self.eval_problems)
         accuracy = correct / total if total else 0
@@ -227,6 +280,10 @@ def train(args):
         trust_remote_code=True,
     )
 
+    # Save default generation_config values before clearing them
+    # (needed to restore during eval accuracy generation)
+    default_temperature = model.generation_config.temperature
+    default_top_p = model.generation_config.top_p
     # Clear sampling params from generation_config to avoid validation errors
     # (some models ship with temperature/top_p set, which conflicts with do_sample=False)
     model.generation_config.temperature = None
@@ -237,35 +294,62 @@ def train(args):
     save_theta_init(model, args.output_dir)
 
     # Load and format dataset
-    sources = args.sources if args.sources else None
-    ds = load_numinamath(
-        max_samples=args.max_samples,
-        sources=sources,
-        seed=args.seed,
-    )
-    print(f"Loaded {len(ds)} training examples")
-    if sources:
-        print(f"  Filtered to sources: {sources}")
+    if args.dataset == "competition_math":
+        ds = load_competition_math(
+            max_samples=args.max_samples,
+            seed=args.seed,
+        )
+        print(f"Loaded {len(ds)} training examples from competition_math")
 
-    # Split before formatting so we keep raw eval problems for accuracy
-    split = ds.train_test_split(test_size=args.eval_size, seed=args.seed)
-    raw_eval_problems = [
-        {"problem": row["problem"], "answer": row["answer"]}
-        for row in split["test"]
-    ]
+        # Use full MATH-500 as eval set
+        raw_eval_problems = load_math500()
+        print(f"  Using MATH-500 eval set: {len(raw_eval_problems)} problems")
 
-    train_ds = split["train"].map(
-        format_sft,
-        fn_kwargs={"answer_only": args.answer_only},
-        remove_columns=split["train"].column_names,
-        num_proc=4,
-    )
-    eval_ds = split["test"].map(
-        format_sft,
-        fn_kwargs={"answer_only": args.answer_only},
-        remove_columns=split["test"].column_names,
-        num_proc=4,
-    )
+        # All of ds is used for training
+        train_ds = ds.map(
+            format_sft,
+            fn_kwargs={"answer_only": args.answer_only},
+            remove_columns=ds.column_names,
+            num_proc=4,
+        )
+        # Format MATH-500 as SFT eval dataset (for eval loss)
+        eval_ds_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
+        eval_ds = eval_ds_raw.map(
+            format_sft,
+            fn_kwargs={"answer_only": args.answer_only},
+            remove_columns=eval_ds_raw.column_names,
+            num_proc=4,
+        )
+    else:
+        sources = args.sources if args.sources else None
+        ds = load_numinamath(
+            max_samples=args.max_samples,
+            sources=sources,
+            seed=args.seed,
+        )
+        print(f"Loaded {len(ds)} training examples from numinamath")
+        if sources:
+            print(f"  Filtered to sources: {sources}")
+
+        # Split before formatting so we keep raw eval problems for accuracy
+        split = ds.train_test_split(test_size=args.eval_size, seed=args.seed)
+        raw_eval_problems = [
+            {"problem": row["problem"], "answer": row["answer"]}
+            for row in split["test"]
+        ]
+
+        train_ds = split["train"].map(
+            format_sft,
+            fn_kwargs={"answer_only": args.answer_only},
+            remove_columns=split["train"].column_names,
+            num_proc=4,
+        )
+        eval_ds = split["test"].map(
+            format_sft,
+            fn_kwargs={"answer_only": args.answer_only},
+            remove_columns=split["test"].column_names,
+            num_proc=4,
+        )
     print(f"  Train split: {len(train_ds)}, Eval split: {len(eval_ds)}")
 
     # Training config
@@ -300,6 +384,10 @@ def train(args):
         eval_problems=eval_acc_problems,
         tokenizer=tokenizer,
         max_new_tokens=args.max_seq_length,
+        default_generation_config={
+            "temperature": default_temperature,
+            "top_p": default_top_p,
+        } if args.sample_on_eval else None,
     )
 
     # Trainer
@@ -333,6 +421,11 @@ def train(args):
     print(f"  Learning rate:       {args.learning_rate}")
     print(f"{'='*60}\n")
 
+    # Baseline eval before training (triggers EvalAccuracyCallback.on_evaluate)
+    if args.baseline_eval:
+        print("Running baseline evaluation (step 0)...")
+        trainer.evaluate()
+
     # Train
     trainer.train()
 
@@ -358,6 +451,12 @@ def main():
     parser.add_argument("--output_dir", type=str, default="results/sft")
 
     # Data
+    parser.add_argument(
+        "--dataset", type=str, default="numinamath",
+        choices=["numinamath", "competition_math"],
+        help="Training dataset (default: numinamath). "
+             "competition_math uses MATH-500 as eval set.",
+    )
     parser.add_argument("--max_samples", type=int, default=None,)
     parser.add_argument(
         "--sources", nargs="*", default=None,
@@ -377,6 +476,8 @@ def main():
     parser.add_argument("--eval_steps", type=int, default=100)
     parser.add_argument("--eval_size", type=int, default=500, help="Number of examples to hold out for eval")
     parser.add_argument("--eval_gen_size", type=int, default=100, help="Number of eval problems to generate on for accuracy (subset of eval_size)")
+    parser.add_argument("--sample_on_eval", action="store_true", help="Restore model's default generation_config (temperature/top_p) during eval")
+    parser.add_argument("--baseline_eval", action="store_true", help="Run baseline eval before training")
     parser.add_argument("--logging_steps", type=int, default=100)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
