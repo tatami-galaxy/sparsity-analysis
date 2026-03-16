@@ -108,6 +108,47 @@ def load_competition_math(
     return ds
 
 
+def load_deepmath(
+    max_samples: int | None = None,
+    seed: int = 42,
+) -> "Dataset":
+    """Load zwhe99/DeepMath-103K, exploding 3 solution columns into separate rows.
+
+    Each example is tripled: one row per r1_solution_{1,2,3}. The columns are
+    mapped to 'problem', 'solution', and 'answer' to match the existing format.
+    """
+    from datasets import concatenate_datasets
+
+    ds = load_dataset("zwhe99/DeepMath-103K", split="train")
+
+    # Explode: create 3 copies of each row, one per solution column
+    def _make_split(sol_col):
+        return ds.map(
+            lambda x: {"problem": x["question"], "solution": x[sol_col], "answer": x["final_answer"]},
+            remove_columns=ds.column_names,
+            num_proc=4,
+        )
+
+    ds_exploded = concatenate_datasets([
+        _make_split("r1_solution_1"),
+        _make_split("r1_solution_2"),
+        _make_split("r1_solution_3"),
+    ])
+
+    # Drop rows with empty solutions
+    ds_exploded = ds_exploded.filter(
+        lambda x: x["solution"] is not None and len(x["solution"].strip()) > 0,
+        num_proc=4,
+    )
+
+    ds_exploded = ds_exploded.shuffle(seed=seed)
+
+    if max_samples:
+        ds_exploded = ds_exploded.select(range(min(max_samples, len(ds_exploded))))
+
+    return ds_exploded
+
+
 def load_math500() -> list[dict]:
     """Load the full MATH-500 eval set."""
     ds = load_dataset("HuggingFaceH4/MATH-500", split="test")
@@ -115,6 +156,67 @@ def load_math500() -> list[dict]:
         {"problem": row["problem"], "answer": row["answer"]}
         for row in ds
     ]
+
+
+# ---------------------------------------------------------------------------
+# Per-dataset train preparation
+# ---------------------------------------------------------------------------
+
+def prepare_deepmath(args, tokenizer) -> "Dataset":
+    """Load DeepMath-103K, format for SFT, and filter by sequence length."""
+    ds = load_deepmath(max_samples=args.max_samples, seed=args.seed)
+    print(f"Loaded {len(ds)} training examples from deepmath (3x exploded)")
+
+    train_ds = ds.map(
+        format_sft,
+        fn_kwargs={"answer_only": args.answer_only},
+        remove_columns=ds.column_names,
+        num_proc=4,
+    )
+
+    pre_filter_len = len(train_ds)
+    train_ds = train_ds.filter(
+        lambda x: len(tokenizer.apply_chat_template(x["messages"], tokenize=True)) <= args.max_seq_length,
+        num_proc=4,
+    )
+    print(f"  Filtered by max_seq_length={args.max_seq_length}: {pre_filter_len} -> {len(train_ds)}")
+    return train_ds
+
+
+def prepare_competition_math(args, tokenizer) -> "Dataset":
+    """Load competition_math and format for SFT."""
+    ds = load_competition_math(max_samples=args.max_samples, seed=args.seed)
+    print(f"Loaded {len(ds)} training examples from competition_math")
+
+    return ds.map(
+        format_sft,
+        fn_kwargs={"answer_only": args.answer_only},
+        remove_columns=ds.column_names,
+        num_proc=4,
+    )
+
+
+def prepare_numinamath(args, tokenizer) -> "Dataset":
+    """Load NuminaMath-1.5 and format for SFT."""
+    sources = args.sources if args.sources else None
+    ds = load_numinamath(max_samples=args.max_samples, sources=sources, seed=args.seed)
+    print(f"Loaded {len(ds)} training examples from numinamath")
+    if sources:
+        print(f"  Filtered to sources: {sources}")
+
+    return ds.map(
+        format_sft,
+        fn_kwargs={"answer_only": args.answer_only},
+        remove_columns=ds.column_names,
+        num_proc=4,
+    )
+
+
+DATASET_PREPARERS = {
+    "deepmath": prepare_deepmath,
+    "competition_math": prepare_competition_math,
+    "numinamath": prepare_numinamath,
+}
 
 
 def format_sft(example, answer_only: bool = False):
@@ -299,63 +401,19 @@ def train(args):
     # Save initial weights
     save_theta_init(model, args.output_dir)
 
-    # Load and format dataset
-    if args.dataset == "competition_math":
-        ds = load_competition_math(
-            max_samples=args.max_samples,
-            seed=args.seed,
-        )
-        print(f"Loaded {len(ds)} training examples from competition_math")
+    # Load and format training dataset
+    train_ds = DATASET_PREPARERS[args.dataset](args, tokenizer)
 
-        # Use MATH-500 as eval set
-        raw_eval_problems = load_math500()
-        print(f"  Using MATH-500 eval set: {len(raw_eval_problems)} problems")
-
-        # All of ds is used for training
-        train_ds = ds.map(
-            format_sft,
-            fn_kwargs={"answer_only": args.answer_only},
-            remove_columns=ds.column_names,
-            num_proc=4,
-        )
-        # Format MATH-500 as SFT eval dataset (for eval loss)
-        eval_ds_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
-        eval_ds = eval_ds_raw.map(
-            format_sft,
-            fn_kwargs={"answer_only": args.answer_only},
-            remove_columns=eval_ds_raw.column_names,
-            num_proc=4,
-        )
-    else:
-        sources = args.sources if args.sources else None
-        ds = load_numinamath(
-            max_samples=args.max_samples,
-            sources=sources,
-            seed=args.seed,
-        )
-        print(f"Loaded {len(ds)} training examples from numinamath")
-        if sources:
-            print(f"  Filtered to sources: {sources}")
-
-        # Split before formatting so we keep raw eval problems for accuracy
-        split = ds.train_test_split(test_size=args.eval_size, seed=args.seed)
-        raw_eval_problems = [
-            {"problem": row["problem"], "answer": row["answer"]}
-            for row in split["test"]
-        ]
-
-        train_ds = split["train"].map(
-            format_sft,
-            fn_kwargs={"answer_only": args.answer_only},
-            remove_columns=split["train"].column_names,
-            num_proc=4,
-        )
-        eval_ds = split["test"].map(
-            format_sft,
-            fn_kwargs={"answer_only": args.answer_only},
-            remove_columns=split["test"].column_names,
-            num_proc=4,
-        )
+    # MATH-500 as eval set for all datasets
+    raw_eval_problems = load_math500()
+    eval_ds_raw = load_dataset("HuggingFaceH4/MATH-500", split="test")
+    eval_ds = eval_ds_raw.map(
+        format_sft,
+        fn_kwargs={"answer_only": args.answer_only},
+        remove_columns=eval_ds_raw.column_names,
+        num_proc=4,
+    )
+    print(f"  Using MATH-500 eval set: {len(raw_eval_problems)} problems")
     print(f"  Train split: {len(train_ds)}, Eval split: {len(eval_ds)}")
 
     # Training config
@@ -463,9 +521,9 @@ def main():
     # Data
     parser.add_argument(
         "--dataset", type=str, default="numinamath",
-        choices=["numinamath", "competition_math"],
+        choices=["numinamath", "competition_math", "deepmath"],
         help="Training dataset (default: numinamath). "
-             "competition_math uses MATH-500 as eval set.",
+             "competition_math and deepmath use MATH-500 as eval set.",
     )
     parser.add_argument("--max_samples", type=int, default=None,)
     parser.add_argument(
@@ -484,7 +542,6 @@ def main():
     parser.add_argument("--save_steps", type=int, default=100)
     parser.add_argument("--save_total_limit", type=int, default=None)
     parser.add_argument("--eval_steps", type=int, default=100)
-    parser.add_argument("--eval_size", type=int, default=100, help="Number of examples to hold out for eval")
     parser.add_argument("--eval_accuracy", action="store_true", help="Enable eval accuracy via generation (slow, disabled by default)")
     parser.add_argument("--sample_on_eval", action="store_true", help="Restore model's default generation_config (temperature/top_p) during eval")
     parser.add_argument("--baseline_eval", action="store_true", help="Run baseline eval before training")
