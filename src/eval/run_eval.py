@@ -220,6 +220,7 @@ def evaluate_model(
     print(f"Problems:   {len(problems)}")
     print(f"{'='*60}")
 
+    # TODO : fix_mistral_regex=True?
     llm_kwargs = dict(
         model=model_name,
         tensor_parallel_size=tensor_parallel_size,

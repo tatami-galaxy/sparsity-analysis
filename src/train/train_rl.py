@@ -279,7 +279,7 @@ def train(args):
         # GRPO-specific
         num_generations=args.num_generations,
         max_completion_length=args.max_completion_length,
-        max_prompt_length=args.max_prompt_length,
+        #max_prompt_length=args.max_prompt_length,
         temperature=args.temperature,
         beta=args.beta,
         # vLLM
@@ -380,7 +380,7 @@ def main():
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
-    parser.add_argument("--learning_rate", type=float, default=2e-5)
+    parser.add_argument("--learning_rate", type=float, default=5e-6)
     parser.add_argument("--lr_scheduler_type", type=str, default="constant")
     parser.add_argument("--warmup_steps", type=int, default=10)
     parser.add_argument("--weight_decay", type=float, default=0.01)

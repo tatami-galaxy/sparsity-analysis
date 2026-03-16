@@ -293,8 +293,10 @@ def train(args):
     model.generation_config.temperature = None
     model.generation_config.top_p = None
 
-    # Save initial weights before any
-    args.output_dir = args.output_dir + '/' + args.model.split('/')[-1]
+    # Set output dir
+    args.output_dir = args.output_dir + '/' + args.dataset + '/' + args.model.split('/')[-1]
+
+    # Save initial weights
     save_theta_init(model, args.output_dir)
 
     # Load and format dataset
@@ -305,7 +307,7 @@ def train(args):
         )
         print(f"Loaded {len(ds)} training examples from competition_math")
 
-        # Use full MATH-500 as eval set
+        # Use MATH-500 as eval set
         raw_eval_problems = load_math500()
         print(f"  Using MATH-500 eval set: {len(raw_eval_problems)} problems")
 
@@ -382,17 +384,19 @@ def train(args):
         report_to="tensorboard",
     )
 
-    # Eval accuracy callback (generate on a subset to keep eval fast)
-    eval_acc_problems = raw_eval_problems[:args.eval_gen_size]
-    eval_acc_callback = EvalAccuracyCallback(
-        eval_problems=eval_acc_problems,
-        tokenizer=tokenizer,
-        max_new_tokens=args.max_seq_length,
-        default_generation_config={
-            "temperature": default_temperature,
-            "top_p": default_top_p,
-        } if args.sample_on_eval else None,
-    )
+    # Eval accuracy callback (optional, generates on the full eval set)
+    callbacks = []
+    if args.eval_accuracy:
+        eval_acc_callback = EvalAccuracyCallback(
+            eval_problems=raw_eval_problems,
+            tokenizer=tokenizer,
+            max_new_tokens=args.max_seq_length,
+            default_generation_config={
+                "temperature": default_temperature,
+                "top_p": default_top_p,
+            } if args.sample_on_eval else None,
+        )
+        callbacks.append(eval_acc_callback)
 
     # Trainer
     trainer = SFTTrainer(
@@ -401,9 +405,10 @@ def train(args):
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         processing_class=tokenizer,
-        callbacks=[eval_acc_callback],
+        callbacks=callbacks,
     )
-    eval_acc_callback._trainer = trainer
+    if args.eval_accuracy:
+        eval_acc_callback._trainer = trainer
 
     # Print training plan
     num_devices = max(torch.cuda.device_count(), 1)
@@ -479,8 +484,8 @@ def main():
     parser.add_argument("--save_steps", type=int, default=100)
     parser.add_argument("--save_total_limit", type=int, default=None)
     parser.add_argument("--eval_steps", type=int, default=100)
-    parser.add_argument("--eval_size", type=int, default=500, help="Number of examples to hold out for eval")
-    parser.add_argument("--eval_gen_size", type=int, default=100, help="Number of eval problems to generate on for accuracy (subset of eval_size)")
+    parser.add_argument("--eval_size", type=int, default=100, help="Number of examples to hold out for eval")
+    parser.add_argument("--eval_accuracy", action="store_true", help="Enable eval accuracy via generation (slow, disabled by default)")
     parser.add_argument("--sample_on_eval", action="store_true", help="Restore model's default generation_config (temperature/top_p) during eval")
     parser.add_argument("--baseline_eval", action="store_true", help="Run baseline eval before training")
     parser.add_argument("--logging_steps", type=int, default=100)
