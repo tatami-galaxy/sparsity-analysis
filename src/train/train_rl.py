@@ -34,6 +34,7 @@ import re
 
 import torch
 from datasets import load_dataset
+from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import GRPOConfig, GRPOTrainer
 
@@ -242,9 +243,21 @@ def train(args):
         trust_remote_code=True,
     )
 
-    # Save initial weights before any training
+    # Save initial weights before any training (skip for LoRA)
     args.output_dir = args.output_dir + '/' + args.model.split('/')[-1]
-    save_theta_init(model, args.output_dir)
+    if not args.use_lora:
+        save_theta_init(model, args.output_dir)
+
+    # LoRA config
+    peft_config = None
+    if args.use_lora:
+        peft_config = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=args.lora_target_modules,
+            task_type="CAUSAL_LM",
+        )
 
     # Load and format dataset
     sources = args.sources if args.sources else None
@@ -302,6 +315,7 @@ def train(args):
         reward_funcs=accuracy_reward,
         train_dataset=ds,
         processing_class=tokenizer,
+        peft_config=peft_config,
     )
 
     # Print training plan
@@ -326,6 +340,11 @@ def train(args):
     print(f"  Warmup steps:        {args.warmup_steps}")
     print(f"  Learning rate:       {args.learning_rate}")
     print(f"  vLLM:                {args.use_vllm}")
+    if args.use_lora:
+        print(f"  LoRA r:              {args.lora_r}")
+        print(f"  LoRA alpha:          {args.lora_alpha}")
+        print(f"  LoRA dropout:        {args.lora_dropout}")
+        print(f"  LoRA targets:        {args.lora_target_modules}")
     print(f"{'='*60}\n")
 
     # Train
@@ -367,6 +386,19 @@ def main():
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--beta", type=float, default=0.0,
                         help="KL penalty coefficient (0 = no KL)")
+
+    # LoRA
+    parser.add_argument("--use_lora", action="store_true",
+                        help="Use LoRA for parameter-efficient fine-tuning")
+    parser.add_argument("--lora_r", type=int, default=16,
+                        help="LoRA rank")
+    parser.add_argument("--lora_alpha", type=int, default=32,
+                        help="LoRA alpha (scaling factor)")
+    parser.add_argument("--lora_dropout", type=float, default=0.05,
+                        help="LoRA dropout")
+    parser.add_argument("--lora_target_modules", nargs="*",
+                        default=["q_proj", "k_proj", "v_proj", "o_proj"],
+                        help="LoRA target modules")
 
     # vLLM
     parser.add_argument("--use_vllm", action="store_true",
