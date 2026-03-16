@@ -190,6 +190,7 @@ class EvalAccuracyCallback(TrainerCallback):
         self.tokenizer = tokenizer
         self.max_new_tokens = max_new_tokens
         self.default_generation_config = default_generation_config
+        self._trainer = None  # set after trainer creation to enable direct logging
 
     @torch.no_grad()
     def on_evaluate(self, args, state, control, model, **kwargs):
@@ -253,10 +254,13 @@ class EvalAccuracyCallback(TrainerCallback):
             f"(extraction failures: {extraction_failures})"
         )
 
-        # Log to tensorboard via trainer's log method
-        metrics = kwargs.get("metrics", {})
-        metrics["eval_accuracy"] = accuracy
-        metrics["eval_extraction_failures"] = extraction_failures
+        # Log to tensorboard directly (on_evaluate fires after self.log()
+        # in the Trainer, so modifying the metrics dict is too late)
+        if self._trainer is not None:
+            self._trainer.log({
+                "eval_accuracy": accuracy,
+                "eval_extraction_failures": extraction_failures,
+            })
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +403,7 @@ def train(args):
         processing_class=tokenizer,
         callbacks=[eval_acc_callback],
     )
+    eval_acc_callback._trainer = trainer
 
     # Print training plan
     num_devices = max(torch.cuda.device_count(), 1)
