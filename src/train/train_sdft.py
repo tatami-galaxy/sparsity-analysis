@@ -8,8 +8,10 @@ The model simultaneously serves as student and teacher via in-context learning:
   - Teacher: receives (system + question + expert_solution), provides target distribution
 
 Loss: analytic KL divergence over completion tokens (per-sequence normalized):
-    reverse (paper):  D_KL(πθ ‖ πt)  = Σ_v πθ(v) · (log πθ(v) − log πt(v))
-    forward (ref):    D_KL(πt ‖ πθ)  = Σ_v πt(v) · (log πt(v) − log πθ(v))
+    forward (default, matches reference code):
+                      D_KL(πt ‖ πθ)  = Σ_v πt(v) · (log πt(v) − log πθ(v))
+    reverse (matches paper equations):
+                      D_KL(πθ ‖ πt)  = Σ_v πθ(v) · (log πθ(v) − log πt(v))
 
 Teacher weights updated via EMA after each optimizer step: φ ← α·θ + (1−α)·φ
 
@@ -302,9 +304,9 @@ class SDFTTrainer(Trainer):
         teacher_model: AutoModelForCausalLM,
         sdft_tokenizer: AutoTokenizer,
         max_new_tokens: int = 512,
-        generation_temperature: float = 0.7,
+        generation_temperature: float = 1.0,
         skip_first_n_tokens: int = 3,
-        kl_direction: str = "reverse",
+        kl_direction: str = "forward",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -470,7 +472,7 @@ def train(args):
         gradient_checkpointing_kwargs={"use_reentrant": False},
         learning_rate=args.learning_rate,
         lr_scheduler_type="cosine",
-        warmup_steps=args.warmup_steps,
+        warmup_ratio=args.warmup_ratio,
         weight_decay=args.weight_decay,
         bf16=True,
         logging_steps=args.logging_steps,
@@ -561,9 +563,9 @@ def main():
     parser.add_argument("--max_samples", type=int, default=None)
 
     # Generation (on-policy sampling)
-    parser.add_argument("--max_new_tokens", type=int, default=512,
+    parser.add_argument("--max_new_tokens", type=int, default=1024,
                         help="Max completion length for on-policy generation")
-    parser.add_argument("--generation_temperature", type=float, default=0.7)
+    parser.add_argument("--generation_temperature", type=float, default=1.0)
     parser.add_argument("--max_prompt_length", type=int, default=2048,
                         help="Max tokenized length for student/teacher prompts")
 
@@ -572,9 +574,9 @@ def main():
                         help="EMA rate for teacher update: φ ← α·θ + (1−α)·φ")
     parser.add_argument("--skip_first_n_tokens", type=int, default=3,
                         help="Skip first n completion tokens in KL loss (structural tokens)")
-    parser.add_argument("--kl_direction", type=str, default="reverse",
+    parser.add_argument("--kl_direction", type=str, default="forward",
                         choices=["reverse", "forward"],
-                        help="KL direction: 'reverse' matches paper, 'forward' matches reference codebase default")
+                        help="KL direction: 'forward' matches reference codebase default, 'reverse' matches paper equations")
 
     # Training
     parser.add_argument("--max_steps", type=int, default=10000)
@@ -587,8 +589,8 @@ def main():
     parser.add_argument("--per_device_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=5e-6)
-    parser.add_argument("--warmup_steps", type=int, default=10)
-    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--warmup_ratio", type=float, default=0.1)
+    parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
