@@ -7,8 +7,9 @@ The model simultaneously serves as student and teacher via in-context learning:
   - Student: receives (system + question), generates response on-policy
   - Teacher: receives (system + question + expert_solution), provides target distribution
 
-Loss: analytic reverse KL  D_KL(πθ ‖ π_teacher), averaged over completion tokens:
-    L = (1/T) Σ_t  Σ_{v∈V}  πθ(v) · (log πθ(v) − log π_teacher(v))
+Loss: analytic KL divergence over completion tokens (per-sequence normalized):
+    reverse (paper):  D_KL(πθ ‖ πt)  = Σ_v πθ(v) · (log πθ(v) − log πt(v))
+    forward (ref):    D_KL(πt ‖ πθ)  = Σ_v πt(v) · (log πt(v) − log πθ(v))
 
 Teacher weights updated via EMA after each optimizer step: φ ← α·θ + (1−α)·φ
 
@@ -303,6 +304,7 @@ class SDFTTrainer(Trainer):
         max_new_tokens: int = 512,
         generation_temperature: float = 0.7,
         skip_first_n_tokens: int = 3,
+        kl_direction: str = "reverse",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -311,6 +313,7 @@ class SDFTTrainer(Trainer):
         self.max_new_tokens = max_new_tokens
         self.generation_temperature = generation_temperature
         self.skip_first_n_tokens = skip_first_n_tokens
+        self.kl_direction = kl_direction
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         s_ids  = inputs["student_input_ids"]       # [B, Ls]
@@ -370,16 +373,33 @@ class SDFTTrainer(Trainer):
         )  # [N, V]
         del s_logits
 
-        # ── 5. Analytic reverse KL:  Σ_v πθ(v) · (log πθ(v) − log πt(v)) ───
-        # Equivalent to F.kl_div(teacher_log_p, student_log_p, log_target=True).sum(-1)
-        per_token_kl = (
-            student_log_p.exp() * (student_log_p - teacher_log_p)
-        ).sum(-1)  # [N]
+        # ── 5. KL divergence over full vocabulary per completion token ────────
+        if self.kl_direction == "reverse":
+            # Reverse KL: D_KL(πθ ‖ πt) = Σ_v πθ(v) · (log πθ(v) − log πt(v))
+            # Matches paper equation; equivalent to F.kl_div(teacher, student, log_target=True).sum(-1)
+            per_token_kl = (
+                student_log_p.exp() * (student_log_p - teacher_log_p)
+            ).sum(-1)  # [N]
+        else:
+            # Forward KL: D_KL(πt ‖ πθ) = Σ_v πt(v) · (log πt(v) − log πθ(v))
+            # Reference codebase default (alpha=0).
+            per_token_kl = (
+                teacher_log_p.exp() * (teacher_log_p - student_log_p)
+            ).sum(-1)  # [N]
 
         if self.skip_first_n_tokens > 0:
             per_token_kl = _apply_skip_mask(per_token_kl, comp_s, self.skip_first_n_tokens)
 
-        loss = per_token_kl.mean()
+        # Per-sequence average, then batch average (matches reference implementation).
+        offset = 0
+        seq_losses = []
+        for row in comp_s:
+            n = int(row.sum().item())
+            if n > 0:
+                seq_losses.append(per_token_kl[offset:offset + n].mean())
+            offset += n
+        loss = torch.stack(seq_losses).mean()
+
         return (loss, None) if return_outputs else loss
 
 
@@ -489,6 +509,7 @@ def train(args):
         max_new_tokens=args.max_new_tokens,
         generation_temperature=args.generation_temperature,
         skip_first_n_tokens=args.skip_first_n_tokens,
+        kl_direction=args.kl_direction,
     )
     if args.eval_accuracy:
         eval_cb._trainer = trainer
@@ -510,6 +531,7 @@ def train(args):
     print(f"  Generation temp:     {args.generation_temperature}")
     print(f"  EMA alpha:           {args.ema_alpha}")
     print(f"  Skip first tokens:   {args.skip_first_n_tokens}")
+    print(f"  KL direction:        {args.kl_direction}")
     print(f"  Learning rate:       {args.learning_rate}")
     print(f"{'='*60}\n")
 
@@ -550,6 +572,9 @@ def main():
                         help="EMA rate for teacher update: φ ← α·θ + (1−α)·φ")
     parser.add_argument("--skip_first_n_tokens", type=int, default=3,
                         help="Skip first n completion tokens in KL loss (structural tokens)")
+    parser.add_argument("--kl_direction", type=str, default="reverse",
+                        choices=["reverse", "forward"],
+                        help="KL direction: 'reverse' matches paper, 'forward' matches reference codebase default")
 
     # Training
     parser.add_argument("--max_steps", type=int, default=10000)
