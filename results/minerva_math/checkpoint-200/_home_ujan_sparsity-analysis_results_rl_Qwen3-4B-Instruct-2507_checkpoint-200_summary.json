@@ -1,0 +1,21 @@
+{
+  "model": "/home/ujan/sparsity-analysis/results/rl/Qwen3-4B-Instruct-2507/checkpoint-200",
+  "dataset_size": 272,
+  "overall_accuracy": 0.2977941176470588,
+  "elapsed_s": 232.50230979919434,
+  "by_level": {
+    "0": {
+      "correct": 81,
+      "total": 272,
+      "accuracy": 0.2977941176470588
+    }
+  },
+  "by_subject": {
+    "": {
+      "correct": 81,
+      "total": 272,
+      "accuracy": 0.2977941176470588
+    }
+  },
+  "extraction_failures": 0
+}

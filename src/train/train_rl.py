@@ -1,5 +1,5 @@
 """
-GRPO training on NuminaMath-1.5 using TRL's GRPOTrainer.
+GRPO training on NuminaMath-1.5 or Polaris-Dataset-53K using TRL's GRPOTrainer.
 
 Outcome-based reward: +1 if the model's boxed answer matches the gold answer, 0 otherwise.
 
@@ -17,11 +17,24 @@ Usage:
         --output_dir results/rl \
         --use_vllm
 
-    # Filter by source
+    # Filter by source (NuminaMath)
     python -m src.train.train_rl \
         --model meta-llama/Llama-3.1-8B-Instruct \
         --output_dir results/rl \
         --sources olympiads
+
+    # Train on Polaris dataset
+    python -m src.train.train_rl \
+        --model meta-llama/Llama-3.1-8B-Instruct \
+        --output_dir results/rl \
+        --dataset polaris
+
+    # Filter Polaris by difficulty (pass-rate buckets like "1/8", "7/8")
+    python -m src.train.train_rl \
+        --model meta-llama/Llama-3.1-8B-Instruct \
+        --output_dir results/rl \
+        --dataset polaris \
+        --difficulty 1/8 2/8 3/8
 
     # Multi GPU
     accelerate launch -m src.train.train_rl ...
@@ -186,8 +199,33 @@ def load_numinamath(
     return ds
 
 
+def load_polaris(
+    max_samples: int | None = None,
+    difficulty: list[str] | None = None,
+    seed: int = 42,
+) -> "Dataset":
+    """Load POLARIS-Project/Polaris-Dataset-53K with optional filtering."""
+    ds = load_dataset("POLARIS-Project/Polaris-Dataset-53K", split="train")
+
+    # Filter to problems with non-empty answers
+    ds = ds.filter(
+        lambda x: x["answer"] is not None and len(x["answer"].strip()) > 0,
+        num_proc=4,
+    )
+
+    if difficulty:
+        ds = ds.filter(lambda x: x["difficulty"] in difficulty, num_proc=4)
+
+    ds = ds.shuffle(seed=seed)
+
+    if max_samples:
+        ds = ds.select(range(min(max_samples, len(ds))))
+
+    return ds
+
+
 def format_grpo(example):
-    """Format a NuminaMath example for GRPO.
+    """Format a NuminaMath/Polaris example for GRPO.
 
     Returns a dict with:
     - prompt: chat messages (system + user) for the model to complete
@@ -244,7 +282,7 @@ def train(args):
     )
 
     # Save initial weights before any training (skip for LoRA)
-    args.output_dir = args.output_dir + '/' + args.model.split('/')[-1]
+    args.output_dir = args.output_dir + '/' + args.dataset + '/' + args.model.split('/')[-1]
     if not args.use_lora:
         save_theta_init(model, args.output_dir)
 
@@ -260,15 +298,26 @@ def train(args):
         )
 
     # Load and format dataset
-    sources = args.sources if args.sources else None
-    ds = load_numinamath(
-        max_samples=args.max_samples,
-        sources=sources,
-        seed=args.seed,
-    )
-    print(f"Loaded {len(ds)} training examples")
-    if sources:
-        print(f"  Filtered to sources: {sources}")
+    if args.dataset == "polaris":
+        difficulty = args.difficulty if args.difficulty else None
+        ds = load_polaris(
+            max_samples=args.max_samples,
+            difficulty=difficulty,
+            seed=args.seed,
+        )
+        print(f"Loaded {len(ds)} training examples from Polaris")
+        if difficulty:
+            print(f"  Filtered to difficulty: {difficulty}")
+    else:
+        sources = args.sources if args.sources else None
+        ds = load_numinamath(
+            max_samples=args.max_samples,
+            sources=sources,
+            seed=args.seed,
+        )
+        print(f"Loaded {len(ds)} training examples from NuminaMath")
+        if sources:
+            print(f"  Filtered to sources: {sources}")
 
     ds = ds.map(
         format_grpo,
@@ -365,17 +414,24 @@ def train(args):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="GRPO on NuminaMath-1.5")
+    parser = argparse.ArgumentParser(description="GRPO on NuminaMath-1.5 or Polaris-Dataset-53K")
 
     # Model
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="results/rl")
 
     # Data
+    parser.add_argument("--dataset", type=str, default="numinamath",
+                        choices=["numinamath", "polaris"],
+                        help="Dataset to train on (default: numinamath)")
     parser.add_argument("--max_samples", type=int, default=None)
     parser.add_argument(
         "--sources", nargs="*", default=None,
         help="Filter to specific NuminaMath sources (e.g. olympiads cn_k12)",
+    )
+    parser.add_argument(
+        "--difficulty", nargs="*", default=None,
+        help="Filter Polaris by difficulty (e.g. 1/8 2/8 3/8)",
     )
 
     # GRPO

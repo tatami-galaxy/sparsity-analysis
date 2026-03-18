@@ -304,7 +304,6 @@ class SDFTTrainer(Trainer):
         teacher_model: AutoModelForCausalLM,
         sdft_tokenizer: AutoTokenizer,
         max_new_tokens: int = 512,
-        generation_temperature: float = 1.0,
         skip_first_n_tokens: int = 3,
         kl_direction: str = "forward",
         **kwargs,
@@ -313,10 +312,10 @@ class SDFTTrainer(Trainer):
         self.teacher_model = teacher_model
         self.sdft_tokenizer = sdft_tokenizer
         self.max_new_tokens = max_new_tokens
-        self.generation_temperature = generation_temperature
         self.skip_first_n_tokens = skip_first_n_tokens
         self.kl_direction = kl_direction
 
+    # TODO : verify
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         s_ids  = inputs["student_input_ids"]       # [B, Ls]
         s_mask = inputs["student_attention_mask"]   # [B, Ls]
@@ -338,7 +337,6 @@ class SDFTTrainer(Trainer):
                     sp.unsqueeze(0),
                     max_new_tokens=self.max_new_tokens,
                     do_sample=True,
-                    temperature=self.generation_temperature,
                     pad_token_id=pad_id,
                     eos_token_id=self.sdft_tokenizer.eos_token_id,
                 )
@@ -418,11 +416,8 @@ def train(args):
 
     # ── Model ────────────────────────────────────────────────────────────────
     model = AutoModelForCausalLM.from_pretrained(
-        args.model, torch_dtype=torch.bfloat16, trust_remote_code=True,
+        args.model, dtype=torch.bfloat16, trust_remote_code=True,
     )
-    # Clear sampling params from generation_config to avoid do_sample=False conflicts.
-    model.generation_config.temperature = None
-    model.generation_config.top_p = None
 
     # ── Teacher (EMA copy, frozen, eval mode) ─────────────────────────────────
     teacher_model = copy.deepcopy(model)
@@ -509,7 +504,6 @@ def train(args):
         teacher_model=teacher_model,
         sdft_tokenizer=tokenizer,
         max_new_tokens=args.max_new_tokens,
-        generation_temperature=args.generation_temperature,
         skip_first_n_tokens=args.skip_first_n_tokens,
         kl_direction=args.kl_direction,
     )
@@ -530,7 +524,6 @@ def train(args):
     print(f"  Steps per epoch:     {steps_per_epoch}")
     print(f"  Max steps:           {args.max_steps}")
     print(f"  Max new tokens:      {args.max_new_tokens}")
-    print(f"  Generation temp:     {args.generation_temperature}")
     print(f"  EMA alpha:           {args.ema_alpha}")
     print(f"  Skip first tokens:   {args.skip_first_n_tokens}")
     print(f"  KL direction:        {args.kl_direction}")
@@ -563,9 +556,8 @@ def main():
     parser.add_argument("--max_samples", type=int, default=None)
 
     # Generation (on-policy sampling)
-    parser.add_argument("--max_new_tokens", type=int, default=1024,
+    parser.add_argument("--max_new_tokens", type=int, default=4096,
                         help="Max completion length for on-policy generation")
-    parser.add_argument("--generation_temperature", type=float, default=1.0)
     parser.add_argument("--max_prompt_length", type=int, default=2048,
                         help="Max tokenized length for student/teacher prompts")
 
