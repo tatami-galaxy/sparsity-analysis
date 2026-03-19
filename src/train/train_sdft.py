@@ -556,9 +556,9 @@ def main():
     parser.add_argument("--max_samples", type=int, default=None)
 
     # Generation (on-policy sampling)
-    parser.add_argument("--max_new_tokens", type=int, default=4096,
+    parser.add_argument("--max_new_tokens", type=int, default=2048,
                         help="Max completion length for on-policy generation")
-    parser.add_argument("--max_prompt_length", type=int, default=2048,
+    parser.add_argument("--max_prompt_length", type=int, default=1024,
                         help="Max tokenized length for student/teacher prompts")
 
     # SDFT-specific hyperparameters

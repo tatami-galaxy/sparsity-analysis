@@ -1,0 +1,22 @@
+{
+  "model": "Qwen/Qwen3-4B-Base",
+  "dataset": "numinamath",
+  "accuracy": {
+    "base_accuracy": 0.335,
+    "teacher_accuracy": 0.7,
+    "teacher_novel_accuracy": 0.6333333333333333,
+    "accuracy_gain": 0.36499999999999994,
+    "novel_accuracy_gain": 0.2983333333333333,
+    "n_problems": 200,
+    "n_novel": 150,
+    "n_copied": 50,
+    "mean_copy_ratio": 0.32487262738995404,
+    "base_extraction_failures": 45,
+    "teacher_extraction_failures": 19,
+    "copy_threshold": 0.5
+  },
+  "kl": {
+    "mean_kl_teacher_base": 0.04297501532360912,
+    "n_samples": 50
+  }
+}

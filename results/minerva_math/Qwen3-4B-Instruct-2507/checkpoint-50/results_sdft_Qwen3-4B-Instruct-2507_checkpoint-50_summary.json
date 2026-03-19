@@ -1,0 +1,21 @@
+{
+  "model": "results/sdft/Qwen3-4B-Instruct-2507/checkpoint-50",
+  "dataset_size": 272,
+  "overall_accuracy": 0.2610294117647059,
+  "elapsed_s": 26.84343194961548,
+  "by_level": {
+    "0": {
+      "correct": 71,
+      "total": 272,
+      "accuracy": 0.2610294117647059
+    }
+  },
+  "by_subject": {
+    "": {
+      "correct": 71,
+      "total": 272,
+      "accuracy": 0.2610294117647059
+    }
+  },
+  "extraction_failures": 36
+}

@@ -1,0 +1,18 @@
+{
+  "model": "Qwen/Qwen3-4B-Base",
+  "dataset": "math500",
+  "accuracy": {
+    "base_accuracy": 0.626,
+    "teacher_accuracy": 0.766,
+    "teacher_novel_accuracy": 0.7398190045248869,
+    "accuracy_gain": 0.14,
+    "novel_accuracy_gain": 0.11381900452488691,
+    "n_problems": 500,
+    "n_novel": 442,
+    "n_copied": 58,
+    "mean_copy_ratio": 0.2110428472485877,
+    "base_extraction_failures": 45,
+    "teacher_extraction_failures": 62,
+    "copy_threshold": 0.5
+  }
+}
