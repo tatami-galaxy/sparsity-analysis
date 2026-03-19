@@ -23,7 +23,7 @@ Usage:
         --output_dir results/sdft
 
     CUDA_VISIBLE_DEVICES=0,1 uv run accelerate launch \\
-        --config_file configs/ds_zero2.yaml \\
+        --config_file configs/multi_gpu_2.yaml\\
         -m src.train.train_sdft \\
         --model meta-llama/Llama-3.1-8B-Instruct
 """
@@ -315,7 +315,6 @@ class SDFTTrainer(Trainer):
         self.skip_first_n_tokens = skip_first_n_tokens
         self.kl_direction = kl_direction
 
-    # TODO : verify
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         s_ids  = inputs["student_input_ids"]       # [B, Ls]
         s_mask = inputs["student_attention_mask"]   # [B, Ls]
@@ -377,15 +376,11 @@ class SDFTTrainer(Trainer):
         if self.kl_direction == "reverse":
             # Reverse KL: D_KL(πθ ‖ πt) = Σ_v πθ(v) · (log πθ(v) − log πt(v))
             # Matches paper equation; equivalent to F.kl_div(teacher, student, log_target=True).sum(-1)
-            per_token_kl = (
-                student_log_p.exp() * (student_log_p - teacher_log_p)
-            ).sum(-1)  # [N]
+            per_token_kl = (student_log_p.exp() * (student_log_p - teacher_log_p)).sum(-1)  # [N]
         else:
             # Forward KL: D_KL(πt ‖ πθ) = Σ_v πt(v) · (log πt(v) − log πθ(v))
             # Reference codebase default (alpha=0).
-            per_token_kl = (
-                teacher_log_p.exp() * (teacher_log_p - student_log_p)
-            ).sum(-1)  # [N]
+            per_token_kl = (teacher_log_p.exp() * (teacher_log_p - student_log_p)).sum(-1)  # [N]
 
         if self.skip_first_n_tokens > 0:
             per_token_kl = _apply_skip_mask(per_token_kl, comp_s, self.skip_first_n_tokens)

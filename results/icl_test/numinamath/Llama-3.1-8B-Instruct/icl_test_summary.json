@@ -1,0 +1,18 @@
+{
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "dataset": "numinamath",
+  "accuracy": {
+    "base_accuracy": 0.25,
+    "teacher_accuracy": 0.77,
+    "teacher_novel_accuracy": 0.6632653061224489,
+    "accuracy_gain": 0.52,
+    "novel_accuracy_gain": 0.41326530612244894,
+    "n_problems": 200,
+    "n_novel": 98,
+    "n_copied": 102,
+    "mean_copy_ratio": 0.5423846653872503,
+    "base_extraction_failures": 73,
+    "teacher_extraction_failures": 16,
+    "copy_threshold": 0.5
+  }
+}
