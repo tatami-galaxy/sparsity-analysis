@@ -490,6 +490,7 @@ def train(args):
         warmup_ratio=args.warmup_ratio,
         weight_decay=args.weight_decay,
         bf16=True,
+        ddp_find_unused_parameters=args.ddp_find_unused_parameters,
         logging_steps=args.logging_steps,
         save_strategy="steps",
         save_steps=args.save_steps,
@@ -606,6 +607,8 @@ def main():
     parser.add_argument("--per_device_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=32)
     parser.add_argument("--gradient_checkpointing", action="store_true")
+    parser.add_argument("--ddp_find_unused_parameters", action="store_true",
+                        help="Enable DDP find_unused_parameters (default: off)")
     parser.add_argument("--learning_rate", type=float, default=5e-6)
     parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
                         choices=["linear", "cosine", "cosine_with_restarts",
