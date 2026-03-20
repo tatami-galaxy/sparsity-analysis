@@ -32,8 +32,15 @@ import argparse
 import copy
 import json
 import os
+import warnings
 
 import torch
+
+try:
+    from openai import OpenAI as _OpenAI
+    _HAS_OPENAI = True
+except ImportError:
+    _HAS_OPENAI = False
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -126,21 +133,23 @@ class SDFTDataCollator:
                 )
                 for f in features
             ]
-            return self.tokenizer(
+            enc = self.tokenizer(
                 texts,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
                 max_length=self.max_prompt_length,
             )
+            return texts, enc
 
-        s = _encode("student_messages")
-        t = _encode("teacher_messages")
+        s_texts, s = _encode("student_messages")
+        _, t = _encode("teacher_messages")
         return {
             "student_input_ids": s["input_ids"],
             "student_attention_mask": s["attention_mask"],
             "teacher_input_ids": t["input_ids"],
             "teacher_attention_mask": t["attention_mask"],
+            "student_prompt_texts": s_texts,  # raw strings for vLLM
         }
 
 
@@ -224,6 +233,54 @@ class EMACallback(TrainerCallback):
         with torch.no_grad():
             for ps, pt in zip(student.parameters(), self.teacher_model.parameters()):
                 pt.data.mul_(1.0 - alpha).add_(ps.data, alpha=alpha)
+
+
+# ---------------------------------------------------------------------------
+# vLLM weight-sync callback — save checkpoint so vLLM server can reload
+# ---------------------------------------------------------------------------
+
+class VLLMWeightSyncCallback(TrainerCallback):
+    """Every *sync_steps* optimizer steps, save the student weights to
+    *checkpoint_dir* and (optionally) tell a running vLLM server to reload.
+
+    If a vLLM ``OpenAI`` client is provided the callback will POST to the
+    ``/v1/load_checkpoint`` endpoint (supported by vLLM ≥ 0.6).  Otherwise it
+    just saves the checkpoint and prints a reminder to restart the server.
+    """
+
+    def __init__(
+        self,
+        checkpoint_dir: str,
+        sync_steps: int = 512,
+        vllm_client=None,
+    ):
+        self.checkpoint_dir = checkpoint_dir
+        self.sync_steps = sync_steps
+        self.vllm_client = vllm_client
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+    def on_step_end(self, args, state, control, model=None, **kwargs):
+        if state.global_step == 0 or state.global_step % self.sync_steps != 0:
+            return
+
+        student = model.module if hasattr(model, "module") else model
+        student.save_pretrained(self.checkpoint_dir)
+        print(f"[VLLMSync step {state.global_step}] Saved weights → {self.checkpoint_dir}")
+
+        if self.vllm_client is not None:
+            try:
+                # vLLM ≥ 0.6 exposes /v1/load_checkpoint on the OpenAI server.
+                import httpx
+                base = self.vllm_client.base_url
+                url = f"{base}load_checkpoint"
+                resp = httpx.post(url, json={"checkpoint_dir": self.checkpoint_dir}, timeout=120)
+                resp.raise_for_status()
+                print(f"[VLLMSync step {state.global_step}] Server reloaded weights")
+            except Exception as e:
+                warnings.warn(
+                    f"[VLLMSync step {state.global_step}] Could not reload "
+                    f"vLLM server ({e}). Restart manually or rely on IS correction."
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +383,11 @@ class SDFTTrainer(Trainer):
         max_new_tokens: int = 512,
         skip_first_n_tokens: int = 3,
         kl_direction: str = "forward",
+        # vLLM options
+        use_vllm: bool = False,
+        vllm_server_url: str = "http://localhost:8000/v1",
+        importance_sampling_correction: bool = True,
+        importance_sampling_cap: float = 2.0,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -334,6 +396,73 @@ class SDFTTrainer(Trainer):
         self.max_new_tokens = max_new_tokens
         self.skip_first_n_tokens = skip_first_n_tokens
         self.kl_direction = kl_direction
+        self.use_vllm = use_vllm
+        self.importance_sampling_correction = importance_sampling_correction
+        self.importance_sampling_cap = importance_sampling_cap
+
+        if use_vllm:
+            if not _HAS_OPENAI:
+                raise ImportError(
+                    "vLLM server mode requires the `openai` package. "
+                    "Install it with: pip install openai"
+                )
+            self.vllm_client = _OpenAI(
+                base_url=vllm_server_url,
+                api_key="unused",  # vLLM doesn't require a real key
+            )
+
+    # -- vLLM generation ----------------------------------------------------
+
+    def _generate_vllm(
+        self,
+        prompt_texts: list[str],
+    ) -> tuple[list[torch.Tensor], list[list[float]]]:
+        """Generate completions via vLLM OpenAI-compatible server.
+
+        Returns:
+            completions  : list of 1-D token-id tensors (one per prompt)
+            vllm_logprobs: list of per-token log-prob lists (one per prompt,
+                           each inner list has length == len(completion))
+        """
+        # Use the model name the vLLM server was started with.  The /v1/models
+        # endpoint always lists exactly one entry for single-model serving.
+        models = self.vllm_client.models.list()
+        model_name = models.data[0].id
+
+        response = self.vllm_client.completions.create(
+            model=model_name,
+            prompt=prompt_texts,
+            max_tokens=self.max_new_tokens,
+            temperature=1.0,  # on-policy sampling
+            logprobs=1,       # return per-token log-probs
+        )
+
+        tokenizer = self.sdft_tokenizer
+        completions: list[torch.Tensor] = []
+        vllm_logprobs: list[list[float]] = []
+
+        # Responses arrive in the same order as prompts (index field).
+        sorted_choices = sorted(response.choices, key=lambda c: c.index)
+        for choice in sorted_choices:
+            text = choice.text
+            token_ids = tokenizer.encode(text, add_special_tokens=False)
+            completions.append(torch.tensor(token_ids, dtype=torch.long))
+
+            # Extract log-probs returned by vLLM.
+            lps: list[float] = []
+            if choice.logprobs and choice.logprobs.tokens:
+                lps = [
+                    lp for lp in choice.logprobs.token_logprobs
+                    if lp is not None  # first token may be None
+                ]
+            # Pad / truncate to match token count (re-tokenisation may
+            # differ by ±1 from vLLM's tokeniser).
+            while len(lps) < len(token_ids):
+                lps.append(0.0)
+            lps = lps[: len(token_ids)]
+            vllm_logprobs.append(lps)
+
+        return completions, vllm_logprobs
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         s_ids  = inputs["student_input_ids"]       # [B, Ls]
@@ -345,25 +474,55 @@ class SDFTTrainer(Trainer):
         device = s_ids.device
         pad_id = self.sdft_tokenizer.pad_token_id
 
-        # ── 1. On-policy generation from student (no grad) ───────────────────
-        model.eval()
-        completions, student_prompts, teacher_prompts = [], [], []
+        # ── 1. On-policy generation ──────────────────────────────────────────
+        vllm_token_logprobs = None  # populated only when use_vllm is True
 
-        with torch.no_grad():
+        if self.use_vllm:
+            # ── 1a. Generate via vLLM server ─────────────────────────────────
+            prompt_texts = inputs["student_prompt_texts"]
+            completions, vllm_token_logprobs = self._generate_vllm(prompt_texts)
+            student_prompts = [s_ids[i][s_mask[i].bool()] for i in range(B)]
+            teacher_prompts = [t_ids[i][t_mask[i].bool()] for i in range(B)]
+        else:
+            # ── 1b. Generate via HF model (batched, left-padded) ─────────────
+            model.eval()
+
+            seq_lens = s_mask.sum(dim=1)
+            Ls = s_ids.shape[1]
+            left_ids  = s_ids.new_full((B, Ls), pad_id)
+            left_mask = torch.zeros_like(s_mask)
             for i in range(B):
-                sp = s_ids[i][s_mask[i].bool()]   # strip right-padding
-                gen = _unwrap_model(model).generate(
-                    sp.unsqueeze(0),
+                L = seq_lens[i]
+                left_ids[i, Ls - L:]  = s_ids[i, :L]
+                left_mask[i, Ls - L:] = 1
+
+            with torch.no_grad():
+                gen_out = _unwrap_model(model).generate(
+                    left_ids,
+                    attention_mask=left_mask,
                     max_new_tokens=self.max_new_tokens,
                     do_sample=True,
                     pad_token_id=pad_id,
                     eos_token_id=self.sdft_tokenizer.eos_token_id,
-                )
-                completions.append(gen[0, sp.shape[0]:])
-                student_prompts.append(sp)
-                teacher_prompts.append(t_ids[i][t_mask[i].bool()])
+                )  # [B, Ls + gen_len]
 
-        model.train()
+            model.train()
+
+            completions, student_prompts, teacher_prompts = [], [], []
+            prompt_len = Ls
+            for i in range(B):
+                comp = gen_out[i, prompt_len:]
+                eos_pos = (comp == self.sdft_tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
+                if eos_pos.numel() > 0:
+                    comp = comp[: eos_pos[0] + 1]
+                non_pad = (comp != pad_id).nonzero(as_tuple=True)[0]
+                if non_pad.numel() > 0:
+                    comp = comp[: non_pad[-1] + 1]
+                else:
+                    comp = comp[:0]
+                completions.append(comp)
+                student_prompts.append(s_ids[i][s_mask[i].bool()])
+                teacher_prompts.append(t_ids[i][t_mask[i].bool()])
 
         # ── 2. Build padded full sequences (prompt ‖ completion) ─────────────
         sf_ids, sf_mask, comp_s = _build_padded_batch(student_prompts, completions, pad_id)
@@ -378,8 +537,6 @@ class SDFTTrainer(Trainer):
             t_logits = self.teacher_model(
                 input_ids=tf_ids, attention_mask=tf_mask
             ).logits  # [B, L_t, V]
-            # Extract completion positions and compute log-probs over full vocab.
-            # float() for numerical stability (log_softmax in fp32).
             teacher_log_p = torch.log_softmax(
                 t_logits[:, :-1, :][comp_t].float(), dim=-1
             )  # [N, V]
@@ -394,18 +551,52 @@ class SDFTTrainer(Trainer):
 
         # ── 5. KL divergence over full vocabulary per completion token ────────
         if self.kl_direction == "reverse":
-            # Reverse KL: D_KL(πθ ‖ πt) = Σ_v πθ(v) · (log πθ(v) − log πt(v))
-            # Matches paper equation; equivalent to F.kl_div(teacher, student, log_target=True).sum(-1)
             per_token_kl = (student_log_p.exp() * (student_log_p - teacher_log_p)).sum(-1)  # [N]
         else:
-            # Forward KL: D_KL(πt ‖ πθ) = Σ_v πt(v) · (log πt(v) − log πθ(v))
-            # Reference codebase default (alpha=0).
             per_token_kl = (teacher_log_p.exp() * (teacher_log_p - student_log_p)).sum(-1)  # [N]
 
         if self.skip_first_n_tokens > 0:
             per_token_kl = _apply_skip_mask(per_token_kl, comp_s, self.skip_first_n_tokens)
 
-        # Per-sequence average, then batch average (matches reference implementation).
+        # ── 6. Importance-sampling correction (vLLM only) ─────────────────────
+        #  Tokens were sampled from π_vllm (possibly stale weights).
+        #  IS weight = π_θ(y_t) / π_vllm(y_t),  applied per-sequence.
+        if self.use_vllm and self.importance_sampling_correction and vllm_token_logprobs is not None:
+            # Gather student log-prob at the actually-sampled token ids.
+            # comp_token_ids: 1-D tensor of sampled completion token ids in
+            # the same flattened order as student_log_p rows.
+            comp_token_ids = torch.cat(completions).to(device)  # [N]
+            student_selected_lp = student_log_p[
+                torch.arange(student_log_p.shape[0], device=device), comp_token_ids
+            ]  # [N]
+
+            # Flatten vLLM log-probs to match.
+            vllm_lp = torch.tensor(
+                [lp for seq_lps in vllm_token_logprobs for lp in seq_lps],
+                dtype=student_selected_lp.dtype, device=device,
+            )  # [N]
+
+            per_token_ratio = (student_selected_lp.detach() - vllm_lp).exp()
+
+            # Per-sequence mean ratio, then expand back to per-token weights.
+            offset = 0
+            is_weights = []  # one scalar per sequence
+            for row in comp_s:
+                n = int(row.sum().item())
+                if n > 0:
+                    seq_ratio = per_token_ratio[offset:offset + n].mean()
+                    is_weights.append(seq_ratio.clamp(max=self.importance_sampling_cap))
+                offset += n
+
+            # Apply per-sequence IS weight to per_token_kl.
+            offset = 0
+            for idx, row in enumerate(comp_s):
+                n = int(row.sum().item())
+                if n > 0:
+                    per_token_kl[offset:offset + n] = per_token_kl[offset:offset + n] * is_weights[idx]
+                offset += n
+
+        # ── 7. Per-sequence average, then batch average ───────────────────────
         offset = 0
         seq_losses = []
         for row in comp_s:
@@ -514,6 +705,17 @@ def train(args):
         )
         callbacks.append(eval_cb)
 
+    if args.use_vllm:
+        vllm_ckpt_dir = os.path.join(args.output_dir, "vllm_sync")
+        # The trainer creates the vllm_client in __init__; grab it after
+        # trainer construction.  For now, pass None and patch below.
+        vllm_sync_cb = VLLMWeightSyncCallback(
+            checkpoint_dir=vllm_ckpt_dir,
+            sync_steps=args.vllm_sync_steps,
+            vllm_client=None,  # patched after trainer init
+        )
+        callbacks.append(vllm_sync_cb)
+
     # ── Trainer ───────────────────────────────────────────────────────────────
     trainer = SDFTTrainer(
         model=model,
@@ -527,9 +729,16 @@ def train(args):
         max_new_tokens=args.max_new_tokens,
         skip_first_n_tokens=args.skip_first_n_tokens,
         kl_direction=args.kl_direction,
+        # vLLM
+        use_vllm=args.use_vllm,
+        vllm_server_url=args.vllm_server_url,
+        importance_sampling_correction=args.importance_sampling_correction,
+        importance_sampling_cap=args.importance_sampling_cap,
     )
     if args.eval_accuracy:
         eval_cb._trainer = trainer
+    if args.use_vllm:
+        vllm_sync_cb.vllm_client = trainer.vllm_client
 
     # ── Summary ───────────────────────────────────────────────────────────────
     num_devices = max(torch.cuda.device_count(), 1)
@@ -549,6 +758,11 @@ def train(args):
     print(f"  Skip first tokens:   {args.skip_first_n_tokens}")
     print(f"  KL direction:        {args.kl_direction}")
     print(f"  Learning rate:       {args.learning_rate}")
+    if args.use_vllm:
+        print(f"  vLLM server:         {args.vllm_server_url}")
+        print(f"  vLLM sync steps:     {args.vllm_sync_steps}")
+        print(f"  IS correction:       {args.importance_sampling_correction}")
+        print(f"  IS cap:              {args.importance_sampling_cap}")
     print(f"{'='*60}\n")
 
     # ── Train ─────────────────────────────────────────────────────────────────
@@ -596,8 +810,23 @@ def main():
                         choices=["reverse", "forward"],
                         help="KL direction: 'forward' matches reference codebase default, 'reverse' matches paper equations")
 
+    # vLLM (optional, for faster on-policy generation)
+    parser.add_argument("--use_vllm", action="store_true",
+                        help="Use a vLLM server for on-policy generation (requires running vLLM server)")
+    parser.add_argument("--vllm_server_url", type=str, default="http://localhost:8000/v1",
+                        help="Base URL of the vLLM OpenAI-compatible server")
+    parser.add_argument("--vllm_sync_steps", type=int, default=512,
+                        help="Save checkpoint for vLLM weight reload every N steps")
+    parser.add_argument("--importance_sampling_correction", action="store_true", default=True,
+                        help="Apply IS correction when using vLLM (default: True)")
+    parser.add_argument("--no_importance_sampling_correction", dest="importance_sampling_correction",
+                        action="store_false",
+                        help="Disable IS correction")
+    parser.add_argument("--importance_sampling_cap", type=float, default=2.0,
+                        help="Cap per-sequence IS weights to prevent instability")
+
     # Training
-    parser.add_argument("--max_steps", type=int, default=10000)
+    parser.add_argument("--max_steps", type=int, default=2000)
     parser.add_argument("--save_steps", type=int, default=100)
     parser.add_argument("--save_total_limit", type=int, default=None)
     parser.add_argument("--eval_steps", type=int, default=100)
