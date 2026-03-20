@@ -31,6 +31,8 @@ from datasets import load_dataset
 from vllm import LLM, SamplingParams
 
 from src.eval.run_eval import extract_boxed_answer, is_equiv
+from src.train.train_sdft import TEACHER_TEMPLATE_1, TEACHER_TEMPLATE_2
+from src.train.train_sft import SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
 # Copying detection
@@ -63,23 +65,6 @@ def copying_ratio(response: str, demonstration: str) -> float:
         return 0.0
     lcs = _longest_common_subsequence_len(resp_toks, demo_toks)
     return lcs / len(resp_toks)
-
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-SYSTEM_PROMPT = (
-    "You are a helpful math assistant. Solve the following problem step by step. "
-    "Put your final answer in \\boxed{}."
-)
-
-TEACHER_TEMPLATE = (
-    "{question}\n\n"
-    "This is an example for a response to the question:\n"
-    "{demonstration}\n\n"
-    "Now answer with a response of your own, including the thinking process:"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -131,9 +116,38 @@ def load_numinamath_sample(n: int = 200, seed: int = 42) -> list[dict]:
     return out
 
 
+def load_deepmath_sample(n: int = 200, seed: int = 42) -> list[dict]:
+    """Load a random sample from DeepMath-103K for ICL testing."""
+    ds = load_dataset("zwhe99/DeepMath-103K", split="train")
+    ds = ds.filter(
+        lambda x: (
+            x["r1_solution_1"] is not None
+            and len(x["r1_solution_1"].strip()) > 0
+            and x["final_answer"] is not None
+            and len(x["final_answer"].strip()) > 0
+        ),
+        num_proc=4,
+    )
+    ds = ds.shuffle(seed=seed).select(range(min(n, len(ds))))
+    out = []
+    for row in ds:
+        solution = row["r1_solution_1"].strip()
+        if "\\boxed" not in solution:
+            solution += f"\n\nThe answer is $\\boxed{{{row['final_answer']}}}$."
+        out.append({
+            "problem": row["question"],
+            "answer": row["final_answer"],
+            "solution": solution,
+            "level": 0,
+            "subject": row.get("topic", ""),
+        })
+    return out
+
+
 DATASET_LOADERS = {
     "math500": load_math500_with_solutions,
     "numinamath": load_numinamath_sample,
+    "deepmath": load_deepmath_sample,
 }
 
 
@@ -151,7 +165,8 @@ def build_student_prompt(problem: str) -> list[dict]:
 def build_teacher_prompt(problem: str, solution: str) -> list[dict]:
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": TEACHER_TEMPLATE.format(
+        {"role": "user", "content": TEACHER_TEMPLATE_2.format(
+        #{"role": "user", "content": TEACHER_TEMPLATE_1.format(
             question=problem, demonstration=solution,
         )},
     ]
@@ -453,18 +468,23 @@ def main():
     parser.add_argument("--kl_max_new_tokens", type=int, default=512,
                         help="Max completion length for KL generation")
 
-    # NuminaMath-specific
-    parser.add_argument("--numinamath_samples", type=int, default=200,
-                        help="Number of NuminaMath problems to sample")
+    # Sampling
+    parser.add_argument("--n_samples", type=int, default=200,
+                        help="Number of problems to sample (for numinamath/deepmath)")
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
 
     # -- Load dataset --
-    if args.dataset == "numinamath":
-        problems = load_numinamath_sample(n=args.numinamath_samples, seed=args.seed)
-    else:
-        problems = DATASET_LOADERS[args.dataset]()
+    loader = DATASET_LOADERS[args.dataset]
+    import inspect
+    sig = inspect.signature(loader)
+    kwargs = {}
+    if "n" in sig.parameters:
+        kwargs["n"] = args.n_samples
+    if "seed" in sig.parameters:
+        kwargs["seed"] = args.seed
+    problems = loader(**kwargs)
     print(f"Loaded {len(problems)} problems from {args.dataset}")
 
     # -- Test 1: Accuracy --

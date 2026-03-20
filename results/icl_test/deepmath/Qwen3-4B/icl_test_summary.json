@@ -1,0 +1,18 @@
+{
+  "model": "Qwen/Qwen3-4B",
+  "dataset": "deepmath",
+  "accuracy": {
+    "base_accuracy": 0.07,
+    "teacher_accuracy": 0.865,
+    "teacher_novel_accuracy": 0.95,
+    "accuracy_gain": 0.7949999999999999,
+    "novel_accuracy_gain": 0.8799999999999999,
+    "n_problems": 200,
+    "n_novel": 100,
+    "n_copied": 100,
+    "mean_copy_ratio": 0.559912739659682,
+    "base_extraction_failures": 185,
+    "teacher_extraction_failures": 24,
+    "copy_threshold": 0.5
+  }
+}

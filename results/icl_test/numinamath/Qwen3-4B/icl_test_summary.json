@@ -1,0 +1,18 @@
+{
+  "model": "Qwen/Qwen3-4B",
+  "dataset": "numinamath",
+  "accuracy": {
+    "base_accuracy": 0.32,
+    "teacher_accuracy": 0.385,
+    "teacher_novel_accuracy": 0.385,
+    "accuracy_gain": 0.065,
+    "novel_accuracy_gain": 0.065,
+    "n_problems": 200,
+    "n_novel": 200,
+    "n_copied": 0,
+    "mean_copy_ratio": 0.05603439609809309,
+    "base_extraction_failures": 121,
+    "teacher_extraction_failures": 111,
+    "copy_threshold": 0.5
+  }
+}

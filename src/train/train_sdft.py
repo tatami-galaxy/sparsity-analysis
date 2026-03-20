@@ -1,5 +1,5 @@
 """
-SDFT: Self-Distillation Fine-Tuning on NuminaMath-1.5.
+SDFT: Self-Distillation Fine-Tuning on math datasets (NuminaMath-1.5 / competition_math).
 
 On-policy algorithm from "Self-Distillation Fine-Tuning" (arXiv:2601.19897).
 
@@ -45,6 +45,8 @@ from transformers import (
 from src.eval.run_eval import extract_boxed_answer, is_equiv
 from src.train.train_sft import (
     SYSTEM_PROMPT,
+    load_competition_math,
+    load_deepmath,
     load_math500,
     load_numinamath,
     save_theta_init,
@@ -55,11 +57,17 @@ from src.train.train_sft import (
 # Teacher prompt template (from SDFT paper, Appendix A)
 # ---------------------------------------------------------------------------
 
-TEACHER_TEMPLATE = (
+TEACHER_TEMPLATE_1 = (
     "{question}\n\n"
     "This is an example for a response to the question:\n"
     "{demonstration}\n\n"
     "Now answer with a response of your own, including the thinking process:"
+)
+TEACHER_TEMPLATE_2 = (
+    "{question}\n\n"
+    "Here is a reference solution:\n"
+    "{demonstration}\n\n"
+    "After understanding the reference solution, please try to solve this problem using your own approach:"
 )
 
 
@@ -84,7 +92,8 @@ def format_sdft(example):
     ]
     teacher_messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": TEACHER_TEMPLATE.format(
+        #{"role": "user", "content": TEACHER_TEMPLATE_1.format(
+        {"role": "user", "content": TEACHER_TEMPLATE_2.format(
             question=question, demonstration=solution
         )},
     ]
@@ -425,8 +434,13 @@ def train(args):
     save_theta_init(model, args.output_dir)
 
     # ── Dataset ──────────────────────────────────────────────────────────────
-    ds = load_numinamath(max_samples=args.max_samples, seed=args.seed)
-    print(f"Loaded {len(ds)} training examples from NuminaMath-1.5")
+    if args.dataset == "numinamath":
+        ds = load_numinamath(max_samples=args.max_samples, seed=args.seed)
+    elif args.dataset == "competition_math":
+        ds = load_competition_math(max_samples=args.max_samples, seed=args.seed)
+    elif args.dataset == "deepmath":
+        ds = load_deepmath(max_samples=args.max_samples, seed=args.seed)
+    print(f"Loaded {len(ds)} training examples from {args.dataset}")
 
     train_ds = ds.map(
         format_sdft,
@@ -458,10 +472,10 @@ def train(args):
         max_steps=args.max_steps,
         per_device_train_batch_size=args.per_device_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        gradient_checkpointing=True,
+        gradient_checkpointing=args.gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         learning_rate=args.learning_rate,
-        lr_scheduler_type="cosine",
+        lr_scheduler_type=args.lr_scheduler_type,
         warmup_ratio=args.warmup_ratio,
         weight_decay=args.weight_decay,
         bf16=True,
@@ -541,13 +555,18 @@ def train(args):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="SDFT on NuminaMath-1.5")
+    parser = argparse.ArgumentParser(description="SDFT")
 
     # Model
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="results/sdft")
 
     # Data
+    parser.add_argument("--dataset", type=str, default="numinamath",
+                        choices=["numinamath", "competition_math", "deepmath"],
+                        help="Training dataset: 'numinamath' (AI-MO/NuminaMath-1.5), "
+                             "'competition_math' (qwedsacf/competition_math), "
+                             "or 'deepmath' (zwhe99/DeepMath-103K)")
     parser.add_argument("--max_samples", type=int, default=None)
 
     # Generation (on-policy sampling)
@@ -575,7 +594,13 @@ def main():
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--per_device_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=32)
+    parser.add_argument("--gradient_checkpointing", action="store_true")
     parser.add_argument("--learning_rate", type=float, default=5e-6)
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
+                        choices=["linear", "cosine", "cosine_with_restarts",
+                                 "polynomial", "constant", "constant_with_warmup",
+                                 "inverse_sqrt", "reduce_lr_on_plateau",
+                                 "warmup_stable_decay"])
     parser.add_argument("--warmup_ratio", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)

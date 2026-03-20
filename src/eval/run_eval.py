@@ -166,6 +166,22 @@ def load_minerva_math(levels: list[int] | None = None) -> list[dict]:
     return out
 
 
+@register_dataset("aime_2025")
+def load_aime_2025(levels: list[int] | None = None) -> list[dict]:
+    ds = load_dataset("MathArena/aime_2025", split="train")
+    out = []
+    for row in ds:
+        out.append({
+            "problem": row["problem"],
+            "answer": str(row["answer"]),
+            "solution": "",
+            "level": 0,
+            "subject": ", ".join(row["problem_type"]),
+            "unique_id": f"aime2025_{row['problem_idx']}",
+        })
+    return out
+
+
 @register_dataset("math500")
 def load_math500(levels: list[int] | None = None) -> list[dict]:
     ds = load_dataset("HuggingFaceH4/MATH-500", split="test")
@@ -405,7 +421,8 @@ def main():
 
     # Evaluate each model
     for model_name in args.model:
-        output_dir = args.output_dir+'/'+args.dataset+'/'+model_name.split('/')[-1]
+        model_slug = model_name.replace("/", "_")
+        output_dir = args.output_dir+'/'+args.dataset+'/'+model_slug
         eval_output = evaluate_model(
             model_name=model_name,
             problems=problems,
