@@ -26,6 +26,14 @@ Usage:
         --config_file configs/multi_gpu_2.yaml\\
         -m src.train.train_sdft \\
         --model meta-llama/Llama-3.1-8B-Instruct
+
+    CUDA_VISIBLE_DEVICES=4,5,6,7 uv run accelerate launch \\
+        --config_file configs/multi_gpu_4.yaml -m \\
+        src.train.train_sdft --model Qwen/Qwen3-4B \\
+        --dataset deepmath --eval_steps 50 --save_steps 50 \\
+        --gradient_accumulation_steps 4 --save_total_limit 3 \\
+        --max_prompt_length 8192 --per_device_batch_size 2 \\
+        --lr_scheduler_type constant
 """
 
 import argparse
