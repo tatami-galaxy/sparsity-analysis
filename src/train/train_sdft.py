@@ -42,7 +42,18 @@ from transformers import (
     TrainingArguments,
 )
 
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 from src.eval.run_eval import extract_boxed_answer, is_equiv
+
+
+def _unwrap_model(model):
+    """Unwrap DDP/FSDP to access the underlying model (e.g. for .generate())."""
+    if isinstance(model, DDP):
+        return model.module
+    if hasattr(model, "module"):
+        return model.module
+    return model
 from src.train.train_sft import (
     SYSTEM_PROMPT,
     load_competition_math,
@@ -259,7 +270,7 @@ class StepEvalAccuracyCallback(TrainerCallback):
                 input_text, return_tensors="pt", truncation=True, max_length=2048
             ).to(device)
 
-            outputs = model.generate(
+            outputs = _unwrap_model(model).generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
@@ -341,7 +352,7 @@ class SDFTTrainer(Trainer):
         with torch.no_grad():
             for i in range(B):
                 sp = s_ids[i][s_mask[i].bool()]   # strip right-padding
-                gen = model.generate(
+                gen = _unwrap_model(model).generate(
                     sp.unsqueeze(0),
                     max_new_tokens=self.max_new_tokens,
                     do_sample=True,
