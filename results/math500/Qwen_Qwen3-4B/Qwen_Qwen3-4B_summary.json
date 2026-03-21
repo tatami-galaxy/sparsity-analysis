@@ -1,0 +1,71 @@
+{
+  "model": "Qwen/Qwen3-4B",
+  "dataset_size": 500,
+  "overall_accuracy": 0.38,
+  "elapsed_s": 99.692138671875,
+  "by_level": {
+    "1": {
+      "correct": 32,
+      "total": 43,
+      "accuracy": 0.7441860465116279
+    },
+    "2": {
+      "correct": 51,
+      "total": 90,
+      "accuracy": 0.5666666666666667
+    },
+    "3": {
+      "correct": 51,
+      "total": 105,
+      "accuracy": 0.4857142857142857
+    },
+    "4": {
+      "correct": 38,
+      "total": 128,
+      "accuracy": 0.296875
+    },
+    "5": {
+      "correct": 18,
+      "total": 134,
+      "accuracy": 0.13432835820895522
+    }
+  },
+  "by_subject": {
+    "Algebra": {
+      "correct": 72,
+      "total": 124,
+      "accuracy": 0.5806451612903226
+    },
+    "Counting & Probability": {
+      "correct": 10,
+      "total": 38,
+      "accuracy": 0.2631578947368421
+    },
+    "Geometry": {
+      "correct": 14,
+      "total": 41,
+      "accuracy": 0.34146341463414637
+    },
+    "Intermediate Algebra": {
+      "correct": 14,
+      "total": 97,
+      "accuracy": 0.14432989690721648
+    },
+    "Number Theory": {
+      "correct": 14,
+      "total": 62,
+      "accuracy": 0.22580645161290322
+    },
+    "Prealgebra": {
+      "correct": 54,
+      "total": 82,
+      "accuracy": 0.6585365853658537
+    },
+    "Precalculus": {
+      "correct": 12,
+      "total": 56,
+      "accuracy": 0.21428571428571427
+    }
+  },
+  "extraction_failures": 290
+}
