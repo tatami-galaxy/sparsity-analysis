@@ -1,5 +1,5 @@
 """
-GRPO training on NuminaMath-1.5 or Polaris-Dataset-53K using TRL's GRPOTrainer.
+GRPO training on NuminaMath-1.5, Polaris-Dataset-53K, or DeepMath-103K using TRL's GRPOTrainer.
 
 Outcome-based reward: +1 if the model's boxed answer matches the gold answer, 0 otherwise.
 
@@ -37,7 +37,13 @@ Usage:
         --difficulty 1/8 2/8 3/8
 
     # Multi GPU
-    accelerate launch -m src.train.train_rl ...
+    CUDA_VISIBLE_DEVICES=4,5,6,7 uv run accelerate launch \
+        --config_file configs/multi_gpu_4.yaml \
+        -m src.train.train_rl --model Qwen/Qwen3-4B \
+        --dataset deepmath --max_steps 1000 --logging_steps 10 \
+        --save_steps 50 --gradient_accumulation_steps 4 \
+        --save_total_limit 3 --per_device_batch_size 1 \
+        --lr_scheduler_type constant 
 """
 
 import argparse
@@ -224,6 +230,31 @@ def load_polaris(
     return ds
 
 
+def load_deepmath(
+    max_samples: int | None = None,
+    seed: int = 42,
+) -> "Dataset":
+    """Load zwhe99/DeepMath-103K for GRPO (problem + answer only)."""
+    ds = load_dataset("zwhe99/DeepMath-103K", split="train")
+
+    # Map to unified column names and drop rows without answers.
+    ds = ds.map(
+        lambda x: {"problem": x["question"], "answer": x["final_answer"]},
+        remove_columns=ds.column_names,
+        num_proc=4,
+    )
+    ds = ds.filter(
+        lambda x: x["answer"] is not None and len(x["answer"].strip()) > 0,
+        num_proc=4,
+    )
+
+    ds = ds.shuffle(seed=seed)
+    if max_samples:
+        ds = ds.select(range(min(max_samples, len(ds))))
+
+    return ds
+
+
 def format_grpo(example):
     """Format a NuminaMath/Polaris example for GRPO.
 
@@ -308,6 +339,12 @@ def train(args):
         print(f"Loaded {len(ds)} training examples from Polaris")
         if difficulty:
             print(f"  Filtered to difficulty: {difficulty}")
+    elif args.dataset == "deepmath":
+        ds = load_deepmath(
+            max_samples=args.max_samples,
+            seed=args.seed,
+        )
+        print(f"Loaded {len(ds)} training examples from DeepMath-103K")
     else:
         sources = args.sources if args.sources else None
         ds = load_numinamath(
@@ -352,7 +389,7 @@ def train(args):
         logging_steps=args.logging_steps,
         save_strategy="steps",
         save_steps=args.save_steps,
-        save_total_limit=None,
+        save_total_limit=args.save_total_limit,
         seed=args.seed,
         report_to="tensorboard",
     )
@@ -422,7 +459,7 @@ def main():
 
     # Data
     parser.add_argument("--dataset", type=str, default="numinamath",
-                        choices=["numinamath", "polaris"],
+                        choices=["numinamath", "polaris", "deepmath"],
                         help="Dataset to train on (default: numinamath)")
     parser.add_argument("--max_samples", type=int, default=None)
     parser.add_argument(
@@ -437,8 +474,8 @@ def main():
     # GRPO
     parser.add_argument("--num_generations", type=int, default=8,
                         help="Number of completions per prompt")
-    parser.add_argument("--max_completion_length", type=int, default=4096)
-    parser.add_argument("--max_prompt_length", type=int, default=512)
+    parser.add_argument("--max_completion_length", type=int, default=2048)
+    parser.add_argument("--max_prompt_length", type=int, default=1024)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--beta", type=float, default=0.0,
                         help="KL penalty coefficient (0 = no KL)")
@@ -463,8 +500,10 @@ def main():
                         help="GPU memory fraction for vLLM (colocate mode)")
 
     # Training hyperparameters
-    parser.add_argument("--max_steps", type=int, default=10000)
-    parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--max_steps", type=int, default=1000)
+    parser.add_argument("--save_steps", type=int, default=100)
+    parser.add_argument("--save_total_limit", type=int, default=3,
+                        help="Max number of checkpoints to keep (default: 3)")
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
