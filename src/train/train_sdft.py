@@ -640,7 +640,7 @@ def train(args):
         p.requires_grad_(False)
 
     # ── Output dir + initial weights snapshot ────────────────────────────────
-    args.output_dir = f"{args.output_dir}/{args.model.split('/')[-1]}"
+    args.output_dir = f"{args.output_dir}/{args.dataset}/{args.model.split('/')[-1]}"
     save_theta_init(model, args.output_dir)
 
     # ── Dataset ──────────────────────────────────────────────────────────────

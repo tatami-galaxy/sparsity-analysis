@@ -502,8 +502,7 @@ def main():
     # Training hyperparameters
     parser.add_argument("--max_steps", type=int, default=1000)
     parser.add_argument("--save_steps", type=int, default=100)
-    parser.add_argument("--save_total_limit", type=int, default=3,
-                        help="Max number of checkpoints to keep (default: 3)")
+    parser.add_argument("--save_total_limit", type=int, default=None)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--per_device_batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
