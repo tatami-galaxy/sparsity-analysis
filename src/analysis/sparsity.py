@@ -99,6 +99,7 @@ def compute_sparsity(
     theta_final: dict[str, torch.Tensor],
     threshold: float = 1e-5,
     compute_rank: bool = True,
+    rank_threshold: float = 1e-5,
 ) -> dict:
     """Compute sparsity metrics between two state dicts.
 
@@ -178,7 +179,7 @@ def compute_sparsity(
             sv = torch.linalg.svdvals(delta)
             max_rank = min(delta.shape)
             # Effective rank: number of singular values > threshold
-            effective_rank = (sv > threshold).sum().item()
+            effective_rank = (sv > rank_threshold).sum().item()
             entry["rank"] = effective_rank
             entry["max_rank"] = max_rank
             entry["rank_ratio"] = effective_rank / max_rank
@@ -367,6 +368,7 @@ def analyze_single(
     checkpoint_path: str,
     threshold: float = 1e-5,
     compute_rank: bool = True,
+    rank_threshold: float = 1e-5,
     output_dir: str | None = None,
 ) -> dict:
     """Analyze sparsity for a single checkpoint."""
@@ -379,7 +381,7 @@ def analyze_single(
     theta_final = load_state_dict(checkpoint_path)
 
     print(f"Computing sparsity (threshold={threshold:.0e}, rank={compute_rank}) ...")
-    results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank)
+    results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank, rank_threshold=rank_threshold)
 
     print_summary(results, checkpoint_name)
 
@@ -406,6 +408,7 @@ def analyze_run(
     run_dir: str,
     threshold: float = 1e-5,
     compute_rank: bool = True,
+    rank_threshold: float = 1e-5,
     output_dir: str | None = None,
 ) -> list[dict]:
     """Analyze sparsity for all checkpoints in a training run."""
@@ -438,7 +441,7 @@ def analyze_run(
         theta_final = load_state_dict(ckpt_path)
 
         # Cumulative sparsity: sparsity(θ_init, θ_k)
-        results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank)
+        results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank, rank_threshold=rank_threshold)
         print_summary(results, ckpt_name)
 
         # Consecutive sparsity: sparsity(θ_{k-1}, θ_k)
@@ -520,6 +523,8 @@ def main():
                         help="Threshold for considering a parameter changed (default: 1e-5)")
     parser.add_argument("--no_rank", action="store_true",
                         help="Skip rank analysis (faster)")
+    parser.add_argument("--rank_threshold", type=float, default=1e-5,
+                        help="Threshold for counting effective rank via singular values (default: 1e-5)")
     parser.add_argument("--output_dir", type=str, default="/results/sparsity",
                         help="Output directory for JSON results")
 
@@ -563,6 +568,7 @@ def main():
             run_dir=args.run_dir,
             threshold=args.threshold,
             compute_rank=not args.no_rank,
+            rank_threshold=args.rank_threshold,
             output_dir=args.output_dir,
         )
     elif args.theta_init and args.checkpoint:
@@ -571,6 +577,7 @@ def main():
             checkpoint_path=args.checkpoint,
             threshold=args.threshold,
             compute_rank=not args.no_rank,
+            rank_threshold=args.rank_threshold,
             output_dir=args.output_dir,
         )
     else:
