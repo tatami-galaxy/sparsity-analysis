@@ -116,6 +116,7 @@ def compute_sparsity(
     if not common_keys:
         raise ValueError("No common parameter keys between theta_init and checkpoint")
 
+    # should be zero
     init_only = set(theta_init.keys()) - set(theta_final.keys())
     final_only = set(theta_final.keys()) - set(theta_init.keys())
     if init_only:
@@ -174,6 +175,7 @@ def compute_sparsity(
             "delta_linf": delta.abs().max().item(),
         }
 
+        # TODO : check
         # Rank analysis for 2D weight matrices
         if compute_rank and delta.dim() == 2 and min(delta.shape) > 1:
             sv = torch.linalg.svdvals(delta)
@@ -372,7 +374,9 @@ def analyze_single(
     output_dir: str | None = None,
 ) -> dict:
     """Analyze sparsity for a single checkpoint."""
-    checkpoint_name = Path(checkpoint_path).name
+    # assume checkpoint path is something like : ../../model-name/checkpoint-200
+    checkpoint_name = checkpoint_path.split('/')
+    checkpoint_name = checkpoint_name[-2] + '_' + checkpoint_name[-1]
 
     print(f"Loading theta_init from {theta_init_path} ...")
     theta_init = load_state_dict(theta_init_path)
@@ -386,11 +390,8 @@ def analyze_single(
     print_summary(results, checkpoint_name)
 
     # Save JSON
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-        out_path = os.path.join(output_dir, f"sparsity_{checkpoint_name}.json")
-    else:
-        out_path = os.path.join(checkpoint_path, "sparsity.json")
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, f"sparsity_{checkpoint_name}.json")
 
     # Strip per_param for the saved summary (can be very large)
     summary = {k: v for k, v in results.items() if k != "per_param"}
@@ -525,7 +526,7 @@ def main():
                         help="Skip rank analysis (faster)")
     parser.add_argument("--rank_threshold", type=float, default=1e-5,
                         help="Threshold for counting effective rank via singular values (default: 1e-5)")
-    parser.add_argument("--output_dir", type=str, default="/results/sparsity",
+    parser.add_argument("--output_dir", type=str, default="results/sparsity",
                         help="Output directory for JSON results")
 
     args = parser.parse_args()
