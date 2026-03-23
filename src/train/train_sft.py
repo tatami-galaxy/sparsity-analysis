@@ -552,7 +552,7 @@ def main():
     parser.add_argument("--lr_scheduler_type", type=str, default="constant")
     parser.add_argument("--warmup_steps", type=int, default=10)
     parser.add_argument("--weight_decay", type=float, default=0.01)
-    parser.add_argument("--max_seq_length", type=int, default=4096)
+    parser.add_argument("--max_seq_length", type=int, default=8192)
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
