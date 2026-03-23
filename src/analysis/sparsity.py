@@ -100,6 +100,7 @@ def compute_sparsity(
     threshold: float = 1e-5,
     compute_rank: bool = True,
     rank_threshold: float = 1e-5,
+    exact_zero: bool = False,
 ) -> dict:
     """Compute sparsity metrics between two state dicts.
 
@@ -145,7 +146,10 @@ def compute_sparsity(
 
         delta = w_final - w_init
         n = delta.numel()
-        changed = (delta.abs() > threshold).sum().item()
+        if exact_zero:
+            changed = (delta != 0).sum().item()
+        else:
+            changed = (delta.abs() > threshold).sum().item()
         sparsity = 1.0 - changed / n if n > 0 else 1.0
 
         total_params += n
@@ -206,7 +210,8 @@ def compute_sparsity(
         "total_params": total_params,
         "changed_params": total_changed,
         "unchanged_params": total_params - total_changed,
-        "threshold": threshold,
+        "threshold": None if exact_zero else threshold,
+        "exact_zero": exact_zero,
         "per_param": per_param,
         "per_layer": _group_summary(layer_stats),
         "per_matrix_type": _group_summary(matrix_type_stats),
@@ -226,6 +231,7 @@ def compute_overlap(
     theta_a: dict[str, torch.Tensor],
     theta_b: dict[str, torch.Tensor],
     threshold: float = 1e-5,
+    exact_zero: bool = False,
 ) -> dict:
     """Compute subnetwork overlap between two fine-tuned checkpoints.
 
@@ -256,8 +262,12 @@ def compute_overlap(
         if w_init.shape != w_a.shape or w_init.shape != w_b.shape:
             continue
 
-        mask_a = (w_a - w_init).abs() > threshold
-        mask_b = (w_b - w_init).abs() > threshold
+        if exact_zero:
+            mask_a = (w_a - w_init) != 0
+            mask_b = (w_b - w_init) != 0
+        else:
+            mask_a = (w_a - w_init).abs() > threshold
+            mask_b = (w_b - w_init).abs() > threshold
 
         n = mask_a.numel()
         total_params += n
@@ -283,7 +293,8 @@ def compute_overlap(
         "changed_b": changed_b,
         "changed_both": changed_both,
         "total_params": total_params,
-        "threshold": threshold,
+        "threshold": None if exact_zero else threshold,
+        "exact_zero": exact_zero,
     }
 
 
@@ -304,7 +315,10 @@ def print_summary(results: dict, checkpoint_name: str = ""):
     print(f"  Total params:     {results['total_params']:,}")
     print(f"  Changed params:   {results['changed_params']:,}")
     print(f"  Unchanged params: {results['unchanged_params']:,}")
-    print(f"  Threshold:        {results['threshold']:.0e}")
+    if results.get("exact_zero"):
+        print(f"  Sparsity mode:    exact zero (delta != 0)")
+    else:
+        print(f"  Threshold:        {results['threshold']:.0e}")
 
     # Per matrix type
     print(f"\n  {'Matrix Type':<30} {'Sparsity':>10} {'Changed':>12} {'Total':>12}")
@@ -371,6 +385,7 @@ def analyze_single(
     threshold: float = 1e-5,
     compute_rank: bool = True,
     rank_threshold: float = 1e-5,
+    exact_zero: bool = False,
     output_dir: str | None = None,
 ) -> dict:
     """Analyze sparsity for a single checkpoint."""
@@ -385,7 +400,7 @@ def analyze_single(
     theta_final = load_state_dict(checkpoint_path)
 
     print(f"Computing sparsity (threshold={threshold:.0e}, rank={compute_rank}) ...")
-    results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank, rank_threshold=rank_threshold)
+    results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank, rank_threshold=rank_threshold, exact_zero=exact_zero)
 
     print_summary(results, checkpoint_name)
 
@@ -410,6 +425,7 @@ def analyze_run(
     threshold: float = 1e-5,
     compute_rank: bool = True,
     rank_threshold: float = 1e-5,
+    exact_zero: bool = False,
     output_dir: str | None = None,
 ) -> list[dict]:
     """Analyze sparsity for all checkpoints in a training run."""
@@ -442,7 +458,7 @@ def analyze_run(
         theta_final = load_state_dict(ckpt_path)
 
         # Cumulative sparsity: sparsity(θ_init, θ_k)
-        results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank, rank_threshold=rank_threshold)
+        results = compute_sparsity(theta_init, theta_final, threshold=threshold, compute_rank=compute_rank, rank_threshold=rank_threshold, exact_zero=exact_zero)
         print_summary(results, ckpt_name)
 
         # Consecutive sparsity: sparsity(θ_{k-1}, θ_k)
@@ -526,6 +542,8 @@ def main():
                         help="Skip rank analysis (faster)")
     parser.add_argument("--rank_threshold", type=float, default=1e-5,
                         help="Threshold for counting effective rank via singular values (default: 1e-5)")
+    parser.add_argument("--exact_zero", action="store_true",
+                        help="Use exact zero check (delta != 0) instead of threshold-based sparsity")
     parser.add_argument("--output_dir", type=str, default="results/sparsity",
                         help="Output directory for JSON results")
 
@@ -540,7 +558,7 @@ def main():
         print(f"Loading checkpoint B from {args.checkpoint_b} ...")
         theta_b = load_state_dict(args.checkpoint_b)
 
-        overlap = compute_overlap(theta_init, theta_a, theta_b, threshold=args.threshold)
+        overlap = compute_overlap(theta_init, theta_a, theta_b, threshold=args.threshold, exact_zero=args.exact_zero)
 
         print(f"\n{'='*70}")
         print(f"Subnetwork Overlap Analysis")
@@ -552,7 +570,10 @@ def main():
         print(f"  o1 (A covered by B): {overlap['o1']*100:.2f}%  (random baseline: {overlap['o1_random_baseline']*100:.2f}%)")
         print(f"  o2 (B covered by A): {overlap['o2']*100:.2f}%  (random baseline: {overlap['o2_random_baseline']*100:.2f}%)")
         print(f"  Changed in both:    {overlap['changed_both']:,}")
-        print(f"  Threshold:          {overlap['threshold']:.0e}")
+        if overlap.get("exact_zero"):
+            print(f"  Sparsity mode:      exact zero (delta != 0)")
+        else:
+            print(f"  Threshold:          {overlap['threshold']:.0e}")
         print(f"{'='*70}\n")
 
         if args.output_dir:
@@ -570,6 +591,7 @@ def main():
             threshold=args.threshold,
             compute_rank=not args.no_rank,
             rank_threshold=args.rank_threshold,
+            exact_zero=args.exact_zero,
             output_dir=args.output_dir,
         )
     elif args.theta_init and args.checkpoint:
@@ -579,6 +601,7 @@ def main():
             threshold=args.threshold,
             compute_rank=not args.no_rank,
             rank_threshold=args.rank_threshold,
+            exact_zero=args.exact_zero,
             output_dir=args.output_dir,
         )
     else:

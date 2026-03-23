@@ -1,0 +1,17 @@
+{
+  "o1": 0.9479277982245565,
+  "o2": 0.9023771702140824,
+  "o1_random_baseline": 0.06852588794280395,
+  "o2_random_baseline": 0.06523302403838382,
+  "sparsity_a": 0.9347669759616162,
+  "sparsity_b": 0.9314741120571961,
+  "changed_a": 262397758,
+  "changed_b": 275643198,
+  "changed_both": 248734129,
+  "total_params": 4022468096,
+  "threshold": null,
+  "exact_zero": true,
+  "checkpoint_a": "/mnt/data/ujan/sparsity-checkpoints/sft/Qwen3-4B/checkpoint-200",
+  "checkpoint_b": "/mnt/data/ujan/sparsity-checkpoints/sdft/Qwen3-4B/checkpoint-200",
+  "theta_init": "/mnt/data/ujan/sparsity-checkpoints/sft/Qwen3-4B/theta_init"
+}
