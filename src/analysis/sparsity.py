@@ -209,7 +209,7 @@ def compute_sparsity(
         "per_matrix_type": _group_summary(matrix_type_stats),
         "per_layer_matrix": {
             f"layer_{k[0]}_{k[1]}": v
-            for k, v in sorted(layer_matrix_stats.items())
+            for k, v in _group_summary(layer_matrix_stats).items()
         },
     }
 
