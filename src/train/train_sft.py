@@ -184,32 +184,48 @@ def prepare_deepmath(args, tokenizer) -> "Dataset":
 
 
 def prepare_competition_math(args, tokenizer) -> "Dataset":
-    """Load competition_math and format for SFT."""
+    """Load competition_math, format for SFT, and filter by sequence length."""
     ds = load_competition_math(max_samples=args.max_samples, seed=args.seed)
     print(f"Loaded {len(ds)} training examples from competition_math")
 
-    return ds.map(
+    train_ds = ds.map(
         format_sft,
         fn_kwargs={"answer_only": args.answer_only},
         remove_columns=ds.column_names,
         num_proc=4,
     )
 
+    pre_filter_len = len(train_ds)
+    train_ds = train_ds.filter(
+        lambda x: len(tokenizer.apply_chat_template(x["messages"], tokenize=True)) <= args.max_seq_length,
+        num_proc=4,
+    )
+    print(f"  Filtered by max_seq_length={args.max_seq_length}: {pre_filter_len} -> {len(train_ds)}")
+    return train_ds
+
 
 def prepare_numinamath(args, tokenizer) -> "Dataset":
-    """Load NuminaMath-1.5 and format for SFT."""
+    """Load NuminaMath-1.5, format for SFT, and filter by sequence length."""
     sources = args.sources if args.sources else None
     ds = load_numinamath(max_samples=args.max_samples, sources=sources, seed=args.seed)
     print(f"Loaded {len(ds)} training examples from numinamath")
     if sources:
         print(f"  Filtered to sources: {sources}")
 
-    return ds.map(
+    train_ds = ds.map(
         format_sft,
         fn_kwargs={"answer_only": args.answer_only},
         remove_columns=ds.column_names,
         num_proc=4,
     )
+
+    pre_filter_len = len(train_ds)
+    train_ds = train_ds.filter(
+        lambda x: len(tokenizer.apply_chat_template(x["messages"], tokenize=True)) <= args.max_seq_length,
+        num_proc=4,
+    )
+    print(f"  Filtered by max_seq_length={args.max_seq_length}: {pre_filter_len} -> {len(train_ds)}")
+    return train_ds
 
 
 DATASET_PREPARERS = {
@@ -426,7 +442,7 @@ def train(args):
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         learning_rate=args.learning_rate,
-        lr_scheduler_type="cosine",
+        lr_scheduler_type=args.lr_scheduler_type,
         warmup_steps=args.warmup_steps,
         weight_decay=args.weight_decay,
         bf16=True,
