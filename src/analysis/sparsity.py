@@ -390,8 +390,7 @@ def analyze_single(
 ) -> dict:
     """Analyze sparsity for a single checkpoint."""
     # assume checkpoint path is something like : ../../model-name/checkpoint-200
-    checkpoint_name = checkpoint_path.split('/')
-    checkpoint_name = checkpoint_name[-2] + '_' + checkpoint_name[-1]
+    checkpoint_name = checkpoint_path.replace("/", "_")
 
     print(f"Loading theta_init from {theta_init_path} ...")
     theta_init = load_state_dict(theta_init_path)
