@@ -1,0 +1,71 @@
+{
+  "model": "allenai/Olmo-3-1025-7B",
+  "dataset_size": 500,
+  "overall_accuracy": 0.242,
+  "elapsed_s": 253.39367389678955,
+  "by_level": {
+    "1": {
+      "correct": 13,
+      "total": 43,
+      "accuracy": 0.3023255813953488
+    },
+    "2": {
+      "correct": 30,
+      "total": 90,
+      "accuracy": 0.3333333333333333
+    },
+    "3": {
+      "correct": 27,
+      "total": 105,
+      "accuracy": 0.2571428571428571
+    },
+    "4": {
+      "correct": 30,
+      "total": 128,
+      "accuracy": 0.234375
+    },
+    "5": {
+      "correct": 21,
+      "total": 134,
+      "accuracy": 0.15671641791044777
+    }
+  },
+  "by_subject": {
+    "Algebra": {
+      "correct": 38,
+      "total": 124,
+      "accuracy": 0.3064516129032258
+    },
+    "Counting & Probability": {
+      "correct": 12,
+      "total": 38,
+      "accuracy": 0.3157894736842105
+    },
+    "Geometry": {
+      "correct": 3,
+      "total": 41,
+      "accuracy": 0.07317073170731707
+    },
+    "Intermediate Algebra": {
+      "correct": 10,
+      "total": 97,
+      "accuracy": 0.10309278350515463
+    },
+    "Number Theory": {
+      "correct": 24,
+      "total": 62,
+      "accuracy": 0.3870967741935484
+    },
+    "Prealgebra": {
+      "correct": 25,
+      "total": 82,
+      "accuracy": 0.3048780487804878
+    },
+    "Precalculus": {
+      "correct": 9,
+      "total": 56,
+      "accuracy": 0.16071428571428573
+    }
+  },
+  "extraction_failures": 356
+}

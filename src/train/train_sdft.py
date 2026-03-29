@@ -625,6 +625,10 @@ def train(args):
 
     # ── Tokenizer ────────────────────────────────────────────────────────────
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    if args.chat_template_model:
+        template_tok = AutoTokenizer.from_pretrained(args.chat_template_model)
+        tokenizer.chat_template = template_tok.chat_template
+        print(f"Using chat template from: {args.chat_template_model}")
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -855,6 +859,8 @@ def main():
     parser.add_argument("--warmup_ratio", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--chat_template_model", type=str, default=None,
+                        help="HF model to borrow chat template from (e.g. instruct variant for a base model)")
 
     args = parser.parse_args()
     train(args)

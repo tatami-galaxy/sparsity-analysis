@@ -229,6 +229,7 @@ def evaluate_model(
     temperature: float = 0.0,
     tensor_parallel_size: int = 1,
     max_model_len: int | None = 4096,
+    chat_template_model: str | None = None,
 ) -> dict:
     """Run evaluation and return results dict."""
     print(f"\n{'='*60}")
@@ -247,6 +248,11 @@ def evaluate_model(
         llm_kwargs["max_model_len"] = max_model_len
     llm = LLM(**llm_kwargs)
     tokenizer = llm.get_tokenizer()
+    if chat_template_model:
+        from transformers import AutoTokenizer
+        template_tokenizer = AutoTokenizer.from_pretrained(chat_template_model)
+        tokenizer.chat_template = template_tokenizer.chat_template
+        print(f"Using chat template from: {chat_template_model}")
     sampling_params = SamplingParams(
         temperature=temperature,
         max_tokens=max_tokens,
@@ -409,6 +415,8 @@ def main():
     parser.add_argument("--tensor_parallel_size", type=int, default=1)
     parser.add_argument("--max_model_len", type=int, default=4096,
                         help="Max context length for vLLM KV cache. Use 0 for model default.")
+    parser.add_argument("--chat_template_model", type=str, default=None,
+                        help="HF model to borrow chat template from (e.g. instruct variant for a base model)")
 
     args = parser.parse_args()
 
@@ -430,6 +438,7 @@ def main():
             temperature=args.temperature,
             tensor_parallel_size=args.tensor_parallel_size,
             max_model_len=args.max_model_len or None,
+            chat_template_model=args.chat_template_model,
         )
         print_report(eval_output)
         save_results(eval_output, output_dir)
