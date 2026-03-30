@@ -1,71 +1,71 @@
 {
   "model": "allenai/Olmo-3-1025-7B",
   "dataset_size": 500,
-  "overall_accuracy": 0.242,
-  "elapsed_s": 253.39367389678955,
+  "overall_accuracy": 0.478,
+  "elapsed_s": 139.29273056983948,
   "by_level": {
     "1": {
-      "correct": 13,
+      "correct": 27,
       "total": 43,
-      "accuracy": 0.3023255813953488
+      "accuracy": 0.627906976744186
     },
     "2": {
-      "correct": 30,
+      "correct": 51,
       "total": 90,
-      "accuracy": 0.3333333333333333
+      "accuracy": 0.5666666666666667
     },
     "3": {
-      "correct": 27,
+      "correct": 69,
       "total": 105,
-      "accuracy": 0.2571428571428571
+      "accuracy": 0.6571428571428571
     },
     "4": {
-      "correct": 30,
+      "correct": 54,
       "total": 128,
-      "accuracy": 0.234375
+      "accuracy": 0.421875
     },
     "5": {
-      "correct": 21,
+      "correct": 38,
       "total": 134,
-      "accuracy": 0.15671641791044777
+      "accuracy": 0.2835820895522388
     }
   },
   "by_subject": {
     "Algebra": {
-      "correct": 38,
+      "correct": 84,
       "total": 124,
-      "accuracy": 0.3064516129032258
+      "accuracy": 0.6774193548387096
     },
     "Counting & Probability": {
-      "correct": 12,
+      "correct": 14,
       "total": 38,
-      "accuracy": 0.3157894736842105
+      "accuracy": 0.3684210526315789
     },
     "Geometry": {
-      "correct": 3,
+      "correct": 14,
       "total": 41,
-      "accuracy": 0.07317073170731707
+      "accuracy": 0.34146341463414637
     },
     "Intermediate Algebra": {
-      "correct": 10,
+      "correct": 23,
       "total": 97,
-      "accuracy": 0.10309278350515463
+      "accuracy": 0.23711340206185566
     },
     "Number Theory": {
-      "correct": 24,
+      "correct": 34,
       "total": 62,
-      "accuracy": 0.3870967741935484
+      "accuracy": 0.5483870967741935
     },
     "Prealgebra": {
-      "correct": 25,
+      "correct": 50,
       "total": 82,
-      "accuracy": 0.3048780487804878
+      "accuracy": 0.6097560975609756
     },
     "Precalculus": {
-      "correct": 9,
+      "correct": 20,
       "total": 56,
-      "accuracy": 0.16071428571428573
+      "accuracy": 0.35714285714285715
     }
   },
-  "extraction_failures": 356
+  "extraction_failures": 179
 }
