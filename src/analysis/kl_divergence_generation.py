@@ -369,7 +369,7 @@ def analyze_single(
     checkpoint_path: str,
     dataset: str,
     max_samples: int | None = None,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 2048,
     temperature: float = 0.6,
     top_p: float = 0.95,
     tensor_parallel_size: int = 1,
@@ -480,7 +480,7 @@ def analyze_run(
     run_dir: str,
     dataset: str,
     max_samples: int | None = None,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 2048,
     temperature: float = 0.6,
     top_p: float = 0.95,
     tensor_parallel_size: int = 1,
@@ -667,8 +667,8 @@ def main():
                         help="Maximum number of samples to evaluate")
 
     # Generation (vLLM)
-    parser.add_argument("--max_new_tokens", type=int, default=512,
-                        help="Maximum new tokens to generate per sample (default: 512)")
+    parser.add_argument("--max_new_tokens", type=int, default=2048,
+                        help="Maximum new tokens to generate per sample (default: 2048)")
     parser.add_argument("--temperature", type=float, default=0.6,
                         help="Sampling temperature (default: 0.6, 0 for greedy)")
     parser.add_argument("--top_p", type=float, default=0.95,
@@ -679,7 +679,7 @@ def main():
                         help="Max context length for vLLM KV cache (default: 4096, 0 for model default)")
 
     # Options
-    parser.add_argument("--output_dir", type=str, default="results/kl_divergence",
+    parser.add_argument("--output_dir", type=str, default="results/kl_divergence_generation",
                         help="Output directory for JSON results")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for dataset sampling")

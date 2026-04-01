@@ -1,0 +1,1432 @@
+{
+  "base_model": "Qwen/Qwen3-4B",
+  "checkpoint": "/mnt/data/ujan/rl-checkpoints/deepmath/Qwen3-4B-run-2/checkpoint-5000",
+  "dataset": "deepmath",
+  "max_samples": 100,
+  "max_new_tokens": 2048,
+  "temperature": 0.6,
+  "top_p": 0.95,
+  "num_samples": 100,
+  "base_completions": {
+    "mean_kl": 0.41821566224098206,
+    "median_kl": 0.0009974988643079996,
+    "max_kl": 29.33850860595703,
+    "std_kl": 1.3356865644454956,
+    "total_completion_tokens": 204600,
+    "num_samples": 100,
+    "mean_sample_kl": 0.4182561400532723
+  },
+  "ft_completions": {
+    "mean_kl": 0.5922223329544067,
+    "median_kl": 0.000282471242826432,
+    "max_kl": 43.61247253417969,
+    "std_kl": 2.0559258460998535,
+    "total_completion_tokens": 147370,
+    "num_samples": 100,
+    "mean_sample_kl": 0.6228158688545227
+  },
+  "base_completions_per_sample": [
+    {
+      "index": 0,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2830508351325989,
+      "max_kl": 8.47061824798584,
+      "sum_kl": 579.6881103515625
+    },
+    {
+      "index": 1,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5026187300682068,
+      "max_kl": 23.784915924072266,
+      "sum_kl": 1029.3631591796875
+    },
+    {
+      "index": 2,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5189695358276367,
+      "max_kl": 16.021038055419922,
+      "sum_kl": 1062.849609375
+    },
+    {
+      "index": 3,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.39455240964889526,
+      "max_kl": 17.1666202545166,
+      "sum_kl": 808.0433349609375
+    },
+    {
+      "index": 4,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4093022346496582,
+      "max_kl": 14.102724075317383,
+      "sum_kl": 838.2509765625
+    },
+    {
+      "index": 5,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.576414942741394,
+      "max_kl": 25.117076873779297,
+      "sum_kl": 1180.497802734375
+    },
+    {
+      "index": 6,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.30706098675727844,
+      "max_kl": 23.621305465698242,
+      "sum_kl": 628.8609008789062
+    },
+    {
+      "index": 7,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5534957647323608,
+      "max_kl": 19.21039581298828,
+      "sum_kl": 1133.559326171875
+    },
+    {
+      "index": 8,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.36694368720054626,
+      "max_kl": 14.761032104492188,
+      "sum_kl": 751.5006713867188
+    },
+    {
+      "index": 9,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3267197608947754,
+      "max_kl": 22.68391227722168,
+      "sum_kl": 669.1220703125
+    },
+    {
+      "index": 10,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.33638864755630493,
+      "max_kl": 15.169466018676758,
+      "sum_kl": 688.9239501953125
+    },
+    {
+      "index": 11,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.45952799916267395,
+      "max_kl": 18.94996452331543,
+      "sum_kl": 941.1133422851562
+    },
+    {
+      "index": 12,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.6208643317222595,
+      "max_kl": 19.487049102783203,
+      "sum_kl": 1271.5301513671875
+    },
+    {
+      "index": 13,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.38265785574913025,
+      "max_kl": 12.491291046142578,
+      "sum_kl": 783.6832885742188
+    },
+    {
+      "index": 14,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.43129152059555054,
+      "max_kl": 18.16362953186035,
+      "sum_kl": 883.2850341796875
+    },
+    {
+      "index": 15,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4353276491165161,
+      "max_kl": 21.142620086669922,
+      "sum_kl": 891.551025390625
+    },
+    {
+      "index": 16,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.19909963011741638,
+      "max_kl": 21.608545303344727,
+      "sum_kl": 407.75604248046875
+    },
+    {
+      "index": 17,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2804263234138489,
+      "max_kl": 18.229778289794922,
+      "sum_kl": 574.3131103515625
+    },
+    {
+      "index": 18,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.33766260743141174,
+      "max_kl": 21.560401916503906,
+      "sum_kl": 691.5330200195312
+    },
+    {
+      "index": 19,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.39186716079711914,
+      "max_kl": 21.05762481689453,
+      "sum_kl": 802.5439453125
+    },
+    {
+      "index": 20,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3959590196609497,
+      "max_kl": 25.343791961669922,
+      "sum_kl": 810.924072265625
+    },
+    {
+      "index": 21,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.46982699632644653,
+      "max_kl": 9.696870803833008,
+      "sum_kl": 962.2056884765625
+    },
+    {
+      "index": 22,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3690316677093506,
+      "max_kl": 16.290729522705078,
+      "sum_kl": 755.77685546875
+    },
+    {
+      "index": 23,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.6825149059295654,
+      "max_kl": 26.944578170776367,
+      "sum_kl": 1397.79052734375
+    },
+    {
+      "index": 24,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.45935600996017456,
+      "max_kl": 15.209400177001953,
+      "sum_kl": 940.7611083984375
+    },
+    {
+      "index": 25,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.1458200067281723,
+      "max_kl": 10.516050338745117,
+      "sum_kl": 298.6393737792969
+    },
+    {
+      "index": 26,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3257763087749481,
+      "max_kl": 16.143556594848633,
+      "sum_kl": 667.1898803710938
+    },
+    {
+      "index": 27,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5376765727996826,
+      "max_kl": 21.70565414428711,
+      "sum_kl": 1101.16162109375
+    },
+    {
+      "index": 28,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.35475727915763855,
+      "max_kl": 15.316648483276367,
+      "sum_kl": 726.5429077148438
+    },
+    {
+      "index": 29,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.6429773569107056,
+      "max_kl": 16.725601196289062,
+      "sum_kl": 1316.817626953125
+    },
+    {
+      "index": 30,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3416685461997986,
+      "max_kl": 14.333390235900879,
+      "sum_kl": 699.7371826171875
+    },
+    {
+      "index": 31,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2731940448284149,
+      "max_kl": 13.873112678527832,
+      "sum_kl": 559.5014038085938
+    },
+    {
+      "index": 32,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.25389963388442993,
+      "max_kl": 16.96375846862793,
+      "sum_kl": 519.9864501953125
+    },
+    {
+      "index": 33,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2518163323402405,
+      "max_kl": 11.084711074829102,
+      "sum_kl": 515.7198486328125
+    },
+    {
+      "index": 34,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.18910138309001923,
+      "max_kl": 11.721095085144043,
+      "sum_kl": 387.2796325683594
+    },
+    {
+      "index": 35,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3038257956504822,
+      "max_kl": 13.678221702575684,
+      "sum_kl": 622.2352294921875
+    },
+    {
+      "index": 36,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.38396474719047546,
+      "max_kl": 19.06070327758789,
+      "sum_kl": 786.3598022460938
+    },
+    {
+      "index": 37,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.35978808999061584,
+      "max_kl": 20.515155792236328,
+      "sum_kl": 736.8460083007812
+    },
+    {
+      "index": 38,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.42284196615219116,
+      "max_kl": 16.867897033691406,
+      "sum_kl": 865.9803466796875
+    },
+    {
+      "index": 39,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4945998787879944,
+      "max_kl": 15.996931076049805,
+      "sum_kl": 1012.9405517578125
+    },
+    {
+      "index": 40,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5271762013435364,
+      "max_kl": 17.094797134399414,
+      "sum_kl": 1079.6568603515625
+    },
+    {
+      "index": 41,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.7189565896987915,
+      "max_kl": 27.531877517700195,
+      "sum_kl": 1472.423095703125
+    },
+    {
+      "index": 42,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3922940790653229,
+      "max_kl": 16.002893447875977,
+      "sum_kl": 803.4182739257812
+    },
+    {
+      "index": 43,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3248812258243561,
+      "max_kl": 20.657039642333984,
+      "sum_kl": 665.3567504882812
+    },
+    {
+      "index": 44,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5286577939987183,
+      "max_kl": 16.050914764404297,
+      "sum_kl": 1082.691162109375
+    },
+    {
+      "index": 45,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.610998809337616,
+      "max_kl": 28.885963439941406,
+      "sum_kl": 1251.3255615234375
+    },
+    {
+      "index": 46,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5940512418746948,
+      "max_kl": 22.169031143188477,
+      "sum_kl": 1216.616943359375
+    },
+    {
+      "index": 47,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3490777611732483,
+      "max_kl": 14.724942207336426,
+      "sum_kl": 714.9112548828125
+    },
+    {
+      "index": 48,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5367130041122437,
+      "max_kl": 21.19878578186035,
+      "sum_kl": 1099.188232421875
+    },
+    {
+      "index": 49,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4629737436771393,
+      "max_kl": 21.199203491210938,
+      "sum_kl": 948.1702270507812
+    },
+    {
+      "index": 50,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.51589435338974,
+      "max_kl": 28.720943450927734,
+      "sum_kl": 1056.5516357421875
+    },
+    {
+      "index": 51,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.32687175273895264,
+      "max_kl": 14.06389045715332,
+      "sum_kl": 669.433349609375
+    },
+    {
+      "index": 52,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4342256486415863,
+      "max_kl": 22.257417678833008,
+      "sum_kl": 889.2941284179688
+    },
+    {
+      "index": 53,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3677218556404114,
+      "max_kl": 9.839115142822266,
+      "sum_kl": 753.0943603515625
+    },
+    {
+      "index": 54,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4104972183704376,
+      "max_kl": 16.374624252319336,
+      "sum_kl": 840.6983032226562
+    },
+    {
+      "index": 55,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3164481520652771,
+      "max_kl": 14.335897445678711,
+      "sum_kl": 648.0858154296875
+    },
+    {
+      "index": 56,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3588440716266632,
+      "max_kl": 21.983154296875,
+      "sum_kl": 734.9126586914062
+    },
+    {
+      "index": 57,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4979672431945801,
+      "max_kl": 26.3005428314209,
+      "sum_kl": 1019.8369140625
+    },
+    {
+      "index": 58,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.33247068524360657,
+      "max_kl": 23.342052459716797,
+      "sum_kl": 680.8999633789062
+    },
+    {
+      "index": 59,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2935413122177124,
+      "max_kl": 13.65632438659668,
+      "sum_kl": 601.172607421875
+    },
+    {
+      "index": 60,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5539571642875671,
+      "max_kl": 21.62257957458496,
+      "sum_kl": 1134.5042724609375
+    },
+    {
+      "index": 61,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.34725221991539,
+      "max_kl": 15.987188339233398,
+      "sum_kl": 711.1725463867188
+    },
+    {
+      "index": 62,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5682762265205383,
+      "max_kl": 25.082622528076172,
+      "sum_kl": 1163.8297119140625
+    },
+    {
+      "index": 63,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4251823425292969,
+      "max_kl": 18.613616943359375,
+      "sum_kl": 870.7734375
+    },
+    {
+      "index": 64,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4879915416240692,
+      "max_kl": 21.435274124145508,
+      "sum_kl": 999.4066772460938
+    },
+    {
+      "index": 65,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.35489776730537415,
+      "max_kl": 12.592902183532715,
+      "sum_kl": 726.8306274414062
+    },
+    {
+      "index": 66,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2663111090660095,
+      "max_kl": 16.248462677001953,
+      "sum_kl": 545.4051513671875
+    },
+    {
+      "index": 67,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5503561496734619,
+      "max_kl": 20.49541473388672,
+      "sum_kl": 1127.12939453125
+    },
+    {
+      "index": 68,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3759760558605194,
+      "max_kl": 15.22093391418457,
+      "sum_kl": 769.9989624023438
+    },
+    {
+      "index": 69,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5136451721191406,
+      "max_kl": 20.696327209472656,
+      "sum_kl": 1051.9453125
+    },
+    {
+      "index": 70,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.32404378056526184,
+      "max_kl": 15.12883186340332,
+      "sum_kl": 663.6416625976562
+    },
+    {
+      "index": 71,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.2977101802825928,
+      "max_kl": 15.622123718261719,
+      "sum_kl": 609.71044921875
+    },
+    {
+      "index": 72,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.42626047134399414,
+      "max_kl": 19.86809730529785,
+      "sum_kl": 872.9814453125
+    },
+    {
+      "index": 73,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4381970763206482,
+      "max_kl": 17.059123992919922,
+      "sum_kl": 897.4276123046875
+    },
+    {
+      "index": 74,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.559662938117981,
+      "max_kl": 25.35148048400879,
+      "sum_kl": 1146.189697265625
+    },
+    {
+      "index": 75,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.41539499163627625,
+      "max_kl": 25.350996017456055,
+      "sum_kl": 850.7289428710938
+    },
+    {
+      "index": 76,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3246777057647705,
+      "max_kl": 20.4991397857666,
+      "sum_kl": 664.93994140625
+    },
+    {
+      "index": 77,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.47683215141296387,
+      "max_kl": 20.471311569213867,
+      "sum_kl": 976.55224609375
+    },
+    {
+      "index": 78,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3854930102825165,
+      "max_kl": 13.85584831237793,
+      "sum_kl": 789.4896850585938
+    },
+    {
+      "index": 79,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5232438445091248,
+      "max_kl": 21.3592586517334,
+      "sum_kl": 1071.6033935546875
+    },
+    {
+      "index": 80,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.40941131114959717,
+      "max_kl": 23.861629486083984,
+      "sum_kl": 838.474365234375
+    },
+    {
+      "index": 81,
+      "num_completion_tokens": 2047,
+      "mean_kl": 0.3396638035774231,
+      "max_kl": 12.558765411376953,
+      "sum_kl": 695.2918090820312
+    },
+    {
+      "index": 82,
+      "num_completion_tokens": 1850,
+      "mean_kl": 0.46052223443984985,
+      "max_kl": 19.748645782470703,
+      "sum_kl": 851.9661254882812
+    },
+    {
+      "index": 83,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3696253001689911,
+      "max_kl": 25.274972915649414,
+      "sum_kl": 756.9926147460938
+    },
+    {
+      "index": 84,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3403252065181732,
+      "max_kl": 19.813745498657227,
+      "sum_kl": 696.9860229492188
+    },
+    {
+      "index": 85,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4024887979030609,
+      "max_kl": 14.526886940002441,
+      "sum_kl": 824.2970581054688
+    },
+    {
+      "index": 86,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5693472623825073,
+      "max_kl": 23.794818878173828,
+      "sum_kl": 1166.023193359375
+    },
+    {
+      "index": 87,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.41970115900039673,
+      "max_kl": 22.007394790649414,
+      "sum_kl": 859.5479736328125
+    },
+    {
+      "index": 88,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.293624609708786,
+      "max_kl": 19.941730499267578,
+      "sum_kl": 601.3432006835938
+    },
+    {
+      "index": 89,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4166969060897827,
+      "max_kl": 21.394453048706055,
+      "sum_kl": 853.395263671875
+    },
+    {
+      "index": 90,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.6265097856521606,
+      "max_kl": 29.33850860595703,
+      "sum_kl": 1283.092041015625
+    },
+    {
+      "index": 91,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3970249593257904,
+      "max_kl": 23.500179290771484,
+      "sum_kl": 813.1071166992188
+    },
+    {
+      "index": 92,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.29943639039993286,
+      "max_kl": 15.288802146911621,
+      "sum_kl": 613.2457275390625
+    },
+    {
+      "index": 93,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5988040566444397,
+      "max_kl": 21.570255279541016,
+      "sum_kl": 1226.3507080078125
+    },
+    {
+      "index": 94,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.664301335811615,
+      "max_kl": 28.63380241394043,
+      "sum_kl": 1360.4891357421875
+    },
+    {
+      "index": 95,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.26373744010925293,
+      "max_kl": 21.4468936920166,
+      "sum_kl": 540.13427734375
+    },
+    {
+      "index": 96,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4645248353481293,
+      "max_kl": 14.98900032043457,
+      "sum_kl": 951.3468627929688
+    },
+    {
+      "index": 97,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.44205334782600403,
+      "max_kl": 17.030569076538086,
+      "sum_kl": 905.3252563476562
+    },
+    {
+      "index": 98,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3459925353527069,
+      "max_kl": 15.210732460021973,
+      "sum_kl": 708.5927124023438
+    },
+    {
+      "index": 99,
+      "num_completion_tokens": 2047,
+      "mean_kl": 0.4135589301586151,
+      "max_kl": 11.845791816711426,
+      "sum_kl": 846.5551147460938
+    }
+  ],
+  "ft_completions_per_sample": [
+    {
+      "index": 0,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.42649367451667786,
+      "max_kl": 26.137487411499023,
+      "sum_kl": 873.4590454101562
+    },
+    {
+      "index": 1,
+      "num_completion_tokens": 1340,
+      "mean_kl": 0.4308311343193054,
+      "max_kl": 27.099424362182617,
+      "sum_kl": 577.313720703125
+    },
+    {
+      "index": 2,
+      "num_completion_tokens": 849,
+      "mean_kl": 0.6018811464309692,
+      "max_kl": 27.164012908935547,
+      "sum_kl": 510.9970703125
+    },
+    {
+      "index": 3,
+      "num_completion_tokens": 1133,
+      "mean_kl": 0.6782954931259155,
+      "max_kl": 21.07473373413086,
+      "sum_kl": 768.5087890625
+    },
+    {
+      "index": 4,
+      "num_completion_tokens": 1753,
+      "mean_kl": 0.4625662863254547,
+      "max_kl": 23.53508758544922,
+      "sum_kl": 810.8787231445312
+    },
+    {
+      "index": 5,
+      "num_completion_tokens": 980,
+      "mean_kl": 0.8469070792198181,
+      "max_kl": 35.808807373046875,
+      "sum_kl": 829.9689331054688
+    },
+    {
+      "index": 6,
+      "num_completion_tokens": 1330,
+      "mean_kl": 0.40219685435295105,
+      "max_kl": 31.195114135742188,
+      "sum_kl": 534.9218139648438
+    },
+    {
+      "index": 7,
+      "num_completion_tokens": 1203,
+      "mean_kl": 0.5949544310569763,
+      "max_kl": 28.373638153076172,
+      "sum_kl": 715.7301635742188
+    },
+    {
+      "index": 8,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.46103814244270325,
+      "max_kl": 20.07428741455078,
+      "sum_kl": 944.2061157226562
+    },
+    {
+      "index": 9,
+      "num_completion_tokens": 1349,
+      "mean_kl": 0.5358852744102478,
+      "max_kl": 28.71996307373047,
+      "sum_kl": 722.9092407226562
+    },
+    {
+      "index": 10,
+      "num_completion_tokens": 1382,
+      "mean_kl": 0.44572463631629944,
+      "max_kl": 27.882030487060547,
+      "sum_kl": 615.991455078125
+    },
+    {
+      "index": 11,
+      "num_completion_tokens": 1634,
+      "mean_kl": 0.7918385863304138,
+      "max_kl": 21.719316482543945,
+      "sum_kl": 1293.8642578125
+    },
+    {
+      "index": 12,
+      "num_completion_tokens": 639,
+      "mean_kl": 1.1044957637786865,
+      "max_kl": 35.24680709838867,
+      "sum_kl": 705.7728271484375
+    },
+    {
+      "index": 13,
+      "num_completion_tokens": 1543,
+      "mean_kl": 0.5924137830734253,
+      "max_kl": 19.9484806060791,
+      "sum_kl": 914.094482421875
+    },
+    {
+      "index": 14,
+      "num_completion_tokens": 1424,
+      "mean_kl": 0.5829203724861145,
+      "max_kl": 36.42765426635742,
+      "sum_kl": 830.07861328125
+    },
+    {
+      "index": 15,
+      "num_completion_tokens": 824,
+      "mean_kl": 0.5190819501876831,
+      "max_kl": 26.27888298034668,
+      "sum_kl": 427.7235107421875
+    },
+    {
+      "index": 16,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5786275863647461,
+      "max_kl": 19.982257843017578,
+      "sum_kl": 1185.029296875
+    },
+    {
+      "index": 17,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4233662784099579,
+      "max_kl": 21.732322692871094,
+      "sum_kl": 867.0541381835938
+    },
+    {
+      "index": 18,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3671363294124603,
+      "max_kl": 17.671369552612305,
+      "sum_kl": 751.8952026367188
+    },
+    {
+      "index": 19,
+      "num_completion_tokens": 856,
+      "mean_kl": 0.631972074508667,
+      "max_kl": 20.511552810668945,
+      "sum_kl": 540.9680786132812
+    },
+    {
+      "index": 20,
+      "num_completion_tokens": 1526,
+      "mean_kl": 0.5409629940986633,
+      "max_kl": 31.040279388427734,
+      "sum_kl": 825.509521484375
+    },
+    {
+      "index": 21,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.9509788751602173,
+      "max_kl": 21.357486724853516,
+      "sum_kl": 1947.604736328125
+    },
+    {
+      "index": 22,
+      "num_completion_tokens": 1688,
+      "mean_kl": 0.6606539487838745,
+      "max_kl": 27.019033432006836,
+      "sum_kl": 1115.183837890625
+    },
+    {
+      "index": 23,
+      "num_completion_tokens": 811,
+      "mean_kl": 0.8180845379829407,
+      "max_kl": 29.8376407623291,
+      "sum_kl": 663.466552734375
+    },
+    {
+      "index": 24,
+      "num_completion_tokens": 1079,
+      "mean_kl": 0.595444917678833,
+      "max_kl": 29.181787490844727,
+      "sum_kl": 642.4850463867188
+    },
+    {
+      "index": 25,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.27840790152549744,
+      "max_kl": 11.853568077087402,
+      "sum_kl": 570.1793823242188
+    },
+    {
+      "index": 26,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5427932739257812,
+      "max_kl": 23.74395751953125,
+      "sum_kl": 1111.640625
+    },
+    {
+      "index": 27,
+      "num_completion_tokens": 1451,
+      "mean_kl": 0.554053544998169,
+      "max_kl": 29.24759292602539,
+      "sum_kl": 803.9317016601562
+    },
+    {
+      "index": 28,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.7140802145004272,
+      "max_kl": 28.349472045898438,
+      "sum_kl": 1462.436279296875
+    },
+    {
+      "index": 29,
+      "num_completion_tokens": 1207,
+      "mean_kl": 0.7419235110282898,
+      "max_kl": 27.0858154296875,
+      "sum_kl": 895.501708984375
+    },
+    {
+      "index": 30,
+      "num_completion_tokens": 1809,
+      "mean_kl": 0.6072503924369812,
+      "max_kl": 30.849300384521484,
+      "sum_kl": 1098.5159912109375
+    },
+    {
+      "index": 31,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.47997546195983887,
+      "max_kl": 24.587940216064453,
+      "sum_kl": 982.98974609375
+    },
+    {
+      "index": 32,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5182240009307861,
+      "max_kl": 25.77362823486328,
+      "sum_kl": 1061.32275390625
+    },
+    {
+      "index": 33,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.8340216279029846,
+      "max_kl": 26.019731521606445,
+      "sum_kl": 1708.0762939453125
+    },
+    {
+      "index": 34,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.17253294587135315,
+      "max_kl": 11.388993263244629,
+      "sum_kl": 353.34747314453125
+    },
+    {
+      "index": 35,
+      "num_completion_tokens": 1828,
+      "mean_kl": 0.25665783882141113,
+      "max_kl": 22.495826721191406,
+      "sum_kl": 469.1705322265625
+    },
+    {
+      "index": 36,
+      "num_completion_tokens": 726,
+      "mean_kl": 0.773106038570404,
+      "max_kl": 21.37201499938965,
+      "sum_kl": 561.2749633789062
+    },
+    {
+      "index": 37,
+      "num_completion_tokens": 1173,
+      "mean_kl": 0.8495259284973145,
+      "max_kl": 31.986251831054688,
+      "sum_kl": 996.493896484375
+    },
+    {
+      "index": 38,
+      "num_completion_tokens": 1285,
+      "mean_kl": 0.6104386448860168,
+      "max_kl": 18.750253677368164,
+      "sum_kl": 784.4136962890625
+    },
+    {
+      "index": 39,
+      "num_completion_tokens": 1524,
+      "mean_kl": 0.6706565022468567,
+      "max_kl": 28.730026245117188,
+      "sum_kl": 1022.0805053710938
+    },
+    {
+      "index": 40,
+      "num_completion_tokens": 906,
+      "mean_kl": 0.8039751648902893,
+      "max_kl": 25.884790420532227,
+      "sum_kl": 728.4014892578125
+    },
+    {
+      "index": 41,
+      "num_completion_tokens": 461,
+      "mean_kl": 1.0330461263656616,
+      "max_kl": 38.50788879394531,
+      "sum_kl": 476.2342529296875
+    },
+    {
+      "index": 42,
+      "num_completion_tokens": 2047,
+      "mean_kl": 0.5879054069519043,
+      "max_kl": 30.709836959838867,
+      "sum_kl": 1203.4423828125
+    },
+    {
+      "index": 43,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5086878538131714,
+      "max_kl": 30.721071243286133,
+      "sum_kl": 1041.792724609375
+    },
+    {
+      "index": 44,
+      "num_completion_tokens": 785,
+      "mean_kl": 0.8206934332847595,
+      "max_kl": 24.796512603759766,
+      "sum_kl": 644.2443237304688
+    },
+    {
+      "index": 45,
+      "num_completion_tokens": 895,
+      "mean_kl": 0.7102519273757935,
+      "max_kl": 29.618824005126953,
+      "sum_kl": 635.6754760742188
+    },
+    {
+      "index": 46,
+      "num_completion_tokens": 1193,
+      "mean_kl": 0.6946297287940979,
+      "max_kl": 43.61247253417969,
+      "sum_kl": 828.6932983398438
+    },
+    {
+      "index": 47,
+      "num_completion_tokens": 1440,
+      "mean_kl": 0.5417934656143188,
+      "max_kl": 23.23630142211914,
+      "sum_kl": 780.1826171875
+    },
+    {
+      "index": 48,
+      "num_completion_tokens": 1146,
+      "mean_kl": 0.6813319325447083,
+      "max_kl": 26.249958038330078,
+      "sum_kl": 780.806396484375
+    },
+    {
+      "index": 49,
+      "num_completion_tokens": 1149,
+      "mean_kl": 0.9500916004180908,
+      "max_kl": 27.925336837768555,
+      "sum_kl": 1091.6552734375
+    },
+    {
+      "index": 50,
+      "num_completion_tokens": 567,
+      "mean_kl": 0.6427250504493713,
+      "max_kl": 25.34140968322754,
+      "sum_kl": 364.42510986328125
+    },
+    {
+      "index": 51,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5858631134033203,
+      "max_kl": 21.18267822265625,
+      "sum_kl": 1199.84765625
+    },
+    {
+      "index": 52,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.8949935436248779,
+      "max_kl": 24.71330451965332,
+      "sum_kl": 1832.94677734375
+    },
+    {
+      "index": 53,
+      "num_completion_tokens": 1349,
+      "mean_kl": 0.7228662967681885,
+      "max_kl": 24.308578491210938,
+      "sum_kl": 975.1466064453125
+    },
+    {
+      "index": 54,
+      "num_completion_tokens": 1667,
+      "mean_kl": 0.547582745552063,
+      "max_kl": 26.59886932373047,
+      "sum_kl": 912.8204345703125
+    },
+    {
+      "index": 55,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4822218120098114,
+      "max_kl": 19.03925323486328,
+      "sum_kl": 987.5902709960938
+    },
+    {
+      "index": 56,
+      "num_completion_tokens": 2040,
+      "mean_kl": 0.5220032930374146,
+      "max_kl": 27.814350128173828,
+      "sum_kl": 1064.88671875
+    },
+    {
+      "index": 57,
+      "num_completion_tokens": 1122,
+      "mean_kl": 0.7642692923545837,
+      "max_kl": 31.66602325439453,
+      "sum_kl": 857.5101318359375
+    },
+    {
+      "index": 58,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5247604250907898,
+      "max_kl": 27.59499740600586,
+      "sum_kl": 1074.7093505859375
+    },
+    {
+      "index": 59,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5059109330177307,
+      "max_kl": 26.67565155029297,
+      "sum_kl": 1036.1055908203125
+    },
+    {
+      "index": 60,
+      "num_completion_tokens": 907,
+      "mean_kl": 0.6869480609893799,
+      "max_kl": 34.88215637207031,
+      "sum_kl": 623.0618896484375
+    },
+    {
+      "index": 61,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.7251505255699158,
+      "max_kl": 22.584497451782227,
+      "sum_kl": 1485.1082763671875
+    },
+    {
+      "index": 62,
+      "num_completion_tokens": 796,
+      "mean_kl": 0.886927604675293,
+      "max_kl": 32.630882263183594,
+      "sum_kl": 705.994384765625
+    },
+    {
+      "index": 63,
+      "num_completion_tokens": 1274,
+      "mean_kl": 0.6175271272659302,
+      "max_kl": 21.43716812133789,
+      "sum_kl": 786.7295532226562
+    },
+    {
+      "index": 64,
+      "num_completion_tokens": 1380,
+      "mean_kl": 0.6971916556358337,
+      "max_kl": 32.08236312866211,
+      "sum_kl": 962.1244506835938
+    },
+    {
+      "index": 65,
+      "num_completion_tokens": 2047,
+      "mean_kl": 0.6776655316352844,
+      "max_kl": 31.729860305786133,
+      "sum_kl": 1387.181396484375
+    },
+    {
+      "index": 66,
+      "num_completion_tokens": 1956,
+      "mean_kl": 0.2355034351348877,
+      "max_kl": 21.730236053466797,
+      "sum_kl": 460.64471435546875
+    },
+    {
+      "index": 67,
+      "num_completion_tokens": 1509,
+      "mean_kl": 0.34777164459228516,
+      "max_kl": 36.49911117553711,
+      "sum_kl": 524.7874145507812
+    },
+    {
+      "index": 68,
+      "num_completion_tokens": 747,
+      "mean_kl": 0.8269065022468567,
+      "max_kl": 26.575607299804688,
+      "sum_kl": 617.6991577148438
+    },
+    {
+      "index": 69,
+      "num_completion_tokens": 707,
+      "mean_kl": 0.6048123240470886,
+      "max_kl": 25.33449363708496,
+      "sum_kl": 427.6023254394531
+    },
+    {
+      "index": 70,
+      "num_completion_tokens": 1876,
+      "mean_kl": 0.38689860701560974,
+      "max_kl": 31.559240341186523,
+      "sum_kl": 725.82177734375
+    },
+    {
+      "index": 71,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.3060322403907776,
+      "max_kl": 21.201692581176758,
+      "sum_kl": 626.7540283203125
+    },
+    {
+      "index": 72,
+      "num_completion_tokens": 1018,
+      "mean_kl": 0.5217754244804382,
+      "max_kl": 32.103843688964844,
+      "sum_kl": 531.1673583984375
+    },
+    {
+      "index": 73,
+      "num_completion_tokens": 769,
+      "mean_kl": 0.6879751682281494,
+      "max_kl": 16.5699462890625,
+      "sum_kl": 529.0529174804688
+    },
+    {
+      "index": 74,
+      "num_completion_tokens": 1576,
+      "mean_kl": 0.682583212852478,
+      "max_kl": 30.275390625,
+      "sum_kl": 1075.7510986328125
+    },
+    {
+      "index": 75,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.5953134894371033,
+      "max_kl": 16.524946212768555,
+      "sum_kl": 1219.2020263671875
+    },
+    {
+      "index": 76,
+      "num_completion_tokens": 1852,
+      "mean_kl": 0.38527196645736694,
+      "max_kl": 20.86751937866211,
+      "sum_kl": 713.523681640625
+    },
+    {
+      "index": 77,
+      "num_completion_tokens": 692,
+      "mean_kl": 0.8944537043571472,
+      "max_kl": 25.458343505859375,
+      "sum_kl": 618.9619750976562
+    },
+    {
+      "index": 78,
+      "num_completion_tokens": 1424,
+      "mean_kl": 0.5047324299812317,
+      "max_kl": 32.218177795410156,
+      "sum_kl": 718.739013671875
+    },
+    {
+      "index": 79,
+      "num_completion_tokens": 1112,
+      "mean_kl": 0.6759094595909119,
+      "max_kl": 29.06367301940918,
+      "sum_kl": 751.611328125
+    },
+    {
+      "index": 80,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.6118451952934265,
+      "max_kl": 22.110403060913086,
+      "sum_kl": 1253.0589599609375
+    },
+    {
+      "index": 81,
+      "num_completion_tokens": 1542,
+      "mean_kl": 0.5949558615684509,
+      "max_kl": 27.26422691345215,
+      "sum_kl": 917.4219360351562
+    },
+    {
+      "index": 82,
+      "num_completion_tokens": 662,
+      "mean_kl": 0.9376399517059326,
+      "max_kl": 32.70100402832031,
+      "sum_kl": 620.7176513671875
+    },
+    {
+      "index": 83,
+      "num_completion_tokens": 1612,
+      "mean_kl": 0.6013731360435486,
+      "max_kl": 20.3780517578125,
+      "sum_kl": 969.4135131835938
+    },
+    {
+      "index": 84,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.40748143196105957,
+      "max_kl": 22.204120635986328,
+      "sum_kl": 834.52197265625
+    },
+    {
+      "index": 85,
+      "num_completion_tokens": 1567,
+      "mean_kl": 0.5859119892120361,
+      "max_kl": 21.41937828063965,
+      "sum_kl": 918.1240844726562
+    },
+    {
+      "index": 86,
+      "num_completion_tokens": 1276,
+      "mean_kl": 0.6144099831581116,
+      "max_kl": 29.750158309936523,
+      "sum_kl": 783.9871215820312
+    },
+    {
+      "index": 87,
+      "num_completion_tokens": 1236,
+      "mean_kl": 0.4489278495311737,
+      "max_kl": 25.40402603149414,
+      "sum_kl": 554.8748168945312
+    },
+    {
+      "index": 88,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.4801711440086365,
+      "max_kl": 21.147613525390625,
+      "sum_kl": 983.3905029296875
+    },
+    {
+      "index": 89,
+      "num_completion_tokens": 1244,
+      "mean_kl": 0.5747898817062378,
+      "max_kl": 27.268936157226562,
+      "sum_kl": 715.0386352539062
+    },
+    {
+      "index": 90,
+      "num_completion_tokens": 673,
+      "mean_kl": 0.9682111144065857,
+      "max_kl": 32.450740814208984,
+      "sum_kl": 651.6060791015625
+    },
+    {
+      "index": 91,
+      "num_completion_tokens": 1158,
+      "mean_kl": 0.48556387424468994,
+      "max_kl": 15.113048553466797,
+      "sum_kl": 562.282958984375
+    },
+    {
+      "index": 92,
+      "num_completion_tokens": 2014,
+      "mean_kl": 0.7435596585273743,
+      "max_kl": 34.00090789794922,
+      "sum_kl": 1497.5291748046875
+    },
+    {
+      "index": 93,
+      "num_completion_tokens": 1663,
+      "mean_kl": 0.8078265190124512,
+      "max_kl": 27.727642059326172,
+      "sum_kl": 1343.41552734375
+    },
+    {
+      "index": 94,
+      "num_completion_tokens": 1183,
+      "mean_kl": 0.7084985971450806,
+      "max_kl": 27.119749069213867,
+      "sum_kl": 838.1538696289062
+    },
+    {
+      "index": 95,
+      "num_completion_tokens": 1723,
+      "mean_kl": 0.48960453271865845,
+      "max_kl": 31.219205856323242,
+      "sum_kl": 843.588623046875
+    },
+    {
+      "index": 96,
+      "num_completion_tokens": 1006,
+      "mean_kl": 0.6864040493965149,
+      "max_kl": 21.102699279785156,
+      "sum_kl": 690.5224609375
+    },
+    {
+      "index": 97,
+      "num_completion_tokens": 1116,
+      "mean_kl": 0.9067560434341431,
+      "max_kl": 24.388015747070312,
+      "sum_kl": 1011.9397583007812
+    },
+    {
+      "index": 98,
+      "num_completion_tokens": 2048,
+      "mean_kl": 0.6514862775802612,
+      "max_kl": 30.841236114501953,
+      "sum_kl": 1334.243896484375
+    },
+    {
+      "index": 99,
+      "num_completion_tokens": 1692,
+      "mean_kl": 0.8548165559768677,
+      "max_kl": 25.162961959838867,
+      "sum_kl": 1446.349609375
+    }
+  ]
+}

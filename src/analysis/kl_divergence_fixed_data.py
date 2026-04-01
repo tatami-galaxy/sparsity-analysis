@@ -555,7 +555,7 @@ def main():
     # Options
     parser.add_argument("--max_length", type=int, default=2048,
                         help="Maximum sequence length (default: 2048)")
-    parser.add_argument("--output_dir", type=str, default="results/kl_divergence",
+    parser.add_argument("--output_dir", type=str, default="results/kl_divergence_fixed_data",
                         help="Output directory for JSON results")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for dataset sampling")
