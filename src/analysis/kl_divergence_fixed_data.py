@@ -12,25 +12,26 @@ prompts with reference completions. Datasets are loaded and formatted using
 the same logic as training (src.train.train_sft), ensuring prompts and
 completions match exactly what the model was trained on.
 
-Uses sequential logit caching: load base model, cache all logits to disk,
-free it, load fine-tuned model, compute KL. Peak GPU memory ~1 model.
+Both models are loaded simultaneously on separate GPUs (base on cuda:0,
+checkpoint on cuda:1) and KL is computed on-the-fly per sample — no disk
+caching needed. Requires CUDA_VISIBLE_DEVICES to expose 2 GPUs.
 
 Usage:
     # Single checkpoint
-    python -m src.analysis.kl_divergence_fixed_data \
+    CUDA_VISIBLE_DEVICES=4,5 python -m src.analysis.kl_divergence_fixed_data \
         --base_model Qwen/Qwen3-4B-Base \
         --checkpoint results/sft/numinamath/Qwen3-4B-Base/checkpoint-100 \
         --dataset numinamath \
         --max_samples 500
 
     # All checkpoints in a run directory
-    python -m src.analysis.kl_divergence_fixed_data \
+    CUDA_VISIBLE_DEVICES=4,5 python -m src.analysis.kl_divergence_fixed_data \
         --run_dir results/sft/numinamath/Qwen3-4B-Base \
         --dataset numinamath \
         --max_samples 500
 
     # With custom chat template (e.g. base model using instruct template)
-    python -m src.analysis.kl_divergence_fixed_data \
+    CUDA_VISIBLE_DEVICES=4,5 python -m src.analysis.kl_divergence_fixed_data \
         --base_model Qwen/Qwen3-4B \
         --checkpoint results/sft/deepmath/Qwen3-4B/checkpoint-200 \
         --dataset deepmath \
@@ -42,8 +43,6 @@ import argparse
 import json
 import os
 import re
-import tempfile
-from collections import defaultdict
 from pathlib import Path
 
 import torch
@@ -79,13 +78,14 @@ def load_prompt_completion_pairs(
     Returns list of dicts with keys "prompt_ids" (tokenized prompt as tensor)
     and "completion_ids" (tokenized completion as tensor).
     """
-    # Load raw dataset using the same functions as train_sft.py
+    # Load full dataset, filter by length, then truncate to max_samples
+    # so we always get max_samples usable examples (if available)
     if dataset == "numinamath":
-        ds = load_numinamath(max_samples=max_samples, seed=seed)
+        ds = load_numinamath(max_samples=None, seed=seed)
     elif dataset == "deepmath":
-        ds = load_deepmath(max_samples=max_samples, seed=seed)
+        ds = load_deepmath(max_samples=None, seed=seed)
     elif dataset == "competition_math":
-        ds = load_competition_math(max_samples=max_samples, seed=seed)
+        ds = load_competition_math(max_samples=None, seed=seed)
     else:
         raise ValueError(
             f"Unknown dataset: {dataset}. "
@@ -95,7 +95,7 @@ def load_prompt_completion_pairs(
     # Format into chat messages (same as SFT training)
     ds = ds.map(format_sft, remove_columns=ds.column_names, num_proc=4)
 
-    # Filter by sequence length (same as training)
+    # Filter by sequence length first
     pre_filter = len(ds)
     ds = ds.filter(
         lambda x: len(tokenizer.apply_chat_template(x["messages"], tokenize=True)) <= max_length,
@@ -103,6 +103,10 @@ def load_prompt_completion_pairs(
     )
     if len(ds) < pre_filter:
         print(f"  Filtered by max_length={max_length}: {pre_filter} -> {len(ds)}")
+
+    # Then truncate to max_samples
+    if max_samples is not None and len(ds) > max_samples:
+        ds = ds.select(range(max_samples))
 
     print(f"  Loaded {len(ds)} formatted examples from {dataset}")
 
@@ -169,79 +173,61 @@ def tokenize_pairs(
 
 
 # ---------------------------------------------------------------------------
-# Logit caching
+# Model loading
+# ---------------------------------------------------------------------------
+
+def load_model(
+    model_path: str,
+    device: torch.device,
+    dtype: torch.dtype = torch.bfloat16,
+) -> AutoModelForCausalLM:
+    """Load a model onto a specific GPU device."""
+    print(f"  Loading model from {model_path} -> {device} ...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=dtype,
+        device_map={"": device},
+    )
+    model.eval()
+    return model
+
+
+# ---------------------------------------------------------------------------
+# Online KL computation (no disk caching)
 # ---------------------------------------------------------------------------
 
 @torch.no_grad()
-def cache_logprobs(
-    model_path: str,
-    tokenized_data: list[dict],
-    cache_dir: str,
-    dtype: torch.dtype = torch.bfloat16,
-) -> list[str]:
-    """Load a model, compute log-probs for all samples, save to disk, free model.
-
-    Saves one .pt file per sample containing the log-softmax over vocab at each
-    position (shape: [seq_len-1, vocab_size] in float32).
-
-    Returns list of cache file paths.
-    """
-    print(f"  Loading model from {model_path} ...")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        dtype=dtype,
-        device_map="auto",
-        #attn_implementation="flash_attention_2",
-    )
-    model.eval()
-
-    cache_paths = []
-    for i, sample in enumerate(tokenized_data):
-        input_ids = sample["input_ids"].unsqueeze(0).to(model.device)
-
-        outputs = model(input_ids=input_ids)
-        # logits[0, :-1, :] predicts tokens at positions [1, 2, ..., seq_len-1]
-        logprobs = F.log_softmax(outputs.logits[0, :-1, :].float(), dim=-1)
-
-        cache_path = os.path.join(cache_dir, f"logprobs_{i:06d}.pt")
-        torch.save(logprobs.cpu(), cache_path)
-        cache_paths.append(cache_path)
-
-        if (i + 1) % 50 == 0 or i == len(tokenized_data) - 1:
-            print(f"    Cached {i + 1}/{len(tokenized_data)} samples")
-
-    del model
-    torch.cuda.empty_cache()
-
-    return cache_paths
-
-
-# ---------------------------------------------------------------------------
-# KL computation
-# ---------------------------------------------------------------------------
-
-def compute_kl_from_caches(
-    base_cache_paths: list[str],
-    ft_cache_paths: list[str],
+def compute_kl_online(
+    base_model: AutoModelForCausalLM,
+    ft_model: AutoModelForCausalLM,
     tokenized_data: list[dict],
 ) -> dict:
-    """Compute per-token forward KL divergence from cached log-probs.
+    """Compute per-token forward KL divergence on-the-fly.
+
+    Both models are already loaded on separate GPUs. For each sample:
+      1. Forward pass through both models
+      2. Compute log-softmax on completion tokens
+      3. Compute per-token KL and discard full vocab distributions
 
     KL(π_base ‖ π_ft) = Σ_v π_base(v) [log π_base(v) - log π_ft(v)]
-
     Only computed over completion tokens (after prompt_len).
     """
+    base_device = next(base_model.parameters()).device
+    ft_device = next(ft_model.parameters()).device
+
     per_sample = []
     all_token_kls = []
 
-    for i, (base_path, ft_path, sample) in enumerate(
-        zip(base_cache_paths, ft_cache_paths, tokenized_data)
-    ):
-        base_logprobs = torch.load(base_path, weights_only=True)
-        ft_logprobs = torch.load(ft_path, weights_only=True)
-
+    for i, sample in enumerate(tokenized_data):
         prompt_len = sample["prompt_len"]
-        seq_len = base_logprobs.shape[0]
+        input_ids = sample["input_ids"].unsqueeze(0)
+
+        # Forward pass on both models (each on its own GPU)
+        base_out = base_model(input_ids=input_ids.to(base_device))
+        ft_out = ft_model(input_ids=input_ids.to(ft_device))
+
+        # logits[:, :-1, :] predicts tokens at positions [1, 2, ..., seq_len-1]
+        seq_len = base_out.logits.shape[1] - 1
 
         # logprobs[t] predicts token t+1, so logprobs[prompt_len-1] predicts
         # the first completion token
@@ -256,12 +242,17 @@ def compute_kl_from_caches(
             })
             continue
 
-        base_lp = base_logprobs[start:]
-        ft_lp = ft_logprobs[start:]
+        # Only compute log-softmax on the completion slice to save memory
+        base_lp = F.log_softmax(
+            base_out.logits[0, start:seq_len, :].float(), dim=-1,
+        )
+        ft_lp = F.log_softmax(
+            ft_out.logits[0, start:seq_len, :].float().to(base_device), dim=-1,
+        )
 
         base_probs = base_lp.exp()
         token_kl = (base_probs * (base_lp - ft_lp)).sum(dim=-1)
-        token_kl = token_kl.clamp(min=0.0)
+        token_kl = token_kl.clamp(min=0.0).cpu()
 
         num_tokens = token_kl.shape[0]
         per_sample.append({
@@ -272,6 +263,9 @@ def compute_kl_from_caches(
             "sum_kl": token_kl.sum().item(),
         })
         all_token_kls.append(token_kl)
+
+        if (i + 1) % 50 == 0 or i == len(tokenized_data) - 1:
+            print(f"    Processed {i + 1}/{len(tokenized_data)} samples")
 
     if all_token_kls:
         flat_kls = torch.cat(all_token_kls)
@@ -382,19 +376,15 @@ def analyze_single(
     tokenized = tokenize_pairs(pairs, max_length=max_length)
     print(f"  Tokenized {len(tokenized)} samples")
 
-    with tempfile.TemporaryDirectory(prefix="kl_cache_") as cache_root:
-        base_cache_dir = os.path.join(cache_root, "base")
-        os.makedirs(base_cache_dir)
-        print(f"\nPhase 1: Caching base model log-probs ...")
-        base_paths = cache_logprobs(base_model, tokenized, base_cache_dir, dtype=dtype)
+    print(f"\nLoading both models ...")
+    base_mod = load_model(base_model, device=torch.device("cuda:0"), dtype=dtype)
+    ft_mod = load_model(checkpoint_path, device=torch.device("cuda:1"), dtype=dtype)
 
-        ft_cache_dir = os.path.join(cache_root, "ft")
-        os.makedirs(ft_cache_dir)
-        print(f"\nPhase 2: Caching fine-tuned model log-probs ...")
-        ft_paths = cache_logprobs(checkpoint_path, tokenized, ft_cache_dir, dtype=dtype)
+    print(f"\nComputing KL divergence ...")
+    results = compute_kl_online(base_mod, ft_mod, tokenized)
 
-        print(f"\nPhase 3: Computing KL divergence ...")
-        results = compute_kl_from_caches(base_paths, ft_paths, tokenized)
+    del base_mod, ft_mod
+    torch.cuda.empty_cache()
 
     print_summary(results, checkpoint_name)
 
@@ -430,7 +420,8 @@ def analyze_run(
 ) -> list[dict]:
     """Compute KL divergence for all checkpoints in a training run.
 
-    Caches base model logprobs once and reuses them across checkpoints.
+    Base model stays loaded on cuda:0 across all checkpoints.
+    Each checkpoint is loaded onto cuda:1, KL is computed, then freed.
     """
     run_path = Path(run_dir)
 
@@ -479,58 +470,55 @@ def analyze_run(
     all_results = []
     trajectory = []
 
-    with tempfile.TemporaryDirectory(prefix="kl_cache_") as cache_root:
-        base_cache_dir = os.path.join(cache_root, "base")
-        os.makedirs(base_cache_dir)
-        print(f"\nCaching base model log-probs (one-time) ...")
-        base_paths = cache_logprobs(base_model, tokenized, base_cache_dir, dtype=dtype)
+    print(f"\nLoading base model (stays resident on cuda:0) ...")
+    base_mod = load_model(base_model, device=torch.device("cuda:0"), dtype=dtype)
 
-        for ckpt_path, step in checkpoints:
-            ckpt_name = Path(ckpt_path).name
-            print(f"\n--- {ckpt_name} (step {step}) ---")
+    for ckpt_path, step in checkpoints:
+        ckpt_name = Path(ckpt_path).name
+        print(f"\n--- {ckpt_name} (step {step}) ---")
 
-            ft_cache_dir = os.path.join(cache_root, f"ft_{ckpt_name}")
-            os.makedirs(ft_cache_dir)
+        ft_mod = load_model(ckpt_path, device=torch.device("cuda:1"), dtype=dtype)
 
-            print(f"  Caching fine-tuned model log-probs ...")
-            ft_paths = cache_logprobs(ckpt_path, tokenized, ft_cache_dir, dtype=dtype)
+        print(f"  Computing KL divergence ...")
+        results = compute_kl_online(base_mod, ft_mod, tokenized)
 
-            print(f"  Computing KL divergence ...")
-            results = compute_kl_from_caches(base_paths, ft_paths, tokenized)
-            print_summary(results, ckpt_name)
+        del ft_mod
+        torch.cuda.empty_cache()
 
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
-                out_path = os.path.join(output_dir, f"kl_{ckpt_name}.json")
-            else:
-                out_path = os.path.join(ckpt_path, "kl_divergence.json")
+        print_summary(results, ckpt_name)
 
-            save_data = {
-                "base_model": base_model,
-                "checkpoint": ckpt_path,
-                "step": step,
-                "dataset": dataset,
-                "max_samples": max_samples,
-                "max_length": max_length,
-                "num_samples": len(pairs),
-                **results["aggregate"],
-                "per_sample": results["per_sample"],
-            }
-            with open(out_path, "w") as f:
-                json.dump(save_data, f, indent=2)
-            print(f"  Saved to {out_path}")
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            out_path = os.path.join(output_dir, f"kl_{ckpt_name}.json")
+        else:
+            out_path = os.path.join(ckpt_path, "kl_divergence.json")
 
-            all_results.append(results)
-            trajectory.append({
-                "step": step,
-                "mean_kl": results["aggregate"]["mean_kl"],
-                "median_kl": results["aggregate"]["median_kl"],
-                "max_kl": results["aggregate"]["max_kl"],
-                "mean_sample_kl": results["aggregate"].get("mean_sample_kl", 0.0),
-            })
+        save_data = {
+            "base_model": base_model,
+            "checkpoint": ckpt_path,
+            "step": step,
+            "dataset": dataset,
+            "max_samples": max_samples,
+            "max_length": max_length,
+            "num_samples": len(pairs),
+            **results["aggregate"],
+            "per_sample": results["per_sample"],
+        }
+        with open(out_path, "w") as f:
+            json.dump(save_data, f, indent=2)
+        print(f"  Saved to {out_path}")
 
-            for p in ft_paths:
-                os.remove(p)
+        all_results.append(results)
+        trajectory.append({
+            "step": step,
+            "mean_kl": results["aggregate"]["mean_kl"],
+            "median_kl": results["aggregate"]["median_kl"],
+            "max_kl": results["aggregate"]["max_kl"],
+            "mean_sample_kl": results["aggregate"].get("mean_sample_kl", 0.0),
+        })
+
+    del base_mod
+    torch.cuda.empty_cache()
 
     traj_out = os.path.join(output_dir or run_dir, "kl_trajectory.json")
     with open(traj_out, "w") as f:

@@ -3,8 +3,8 @@ Compute token-level KL divergence between base and fine-tuned models
 using model-generated completions.
 
 For each model (base and fine-tuned), generates completions from dataset
-prompts, then teacher-forces both models through each set of completions
-to measure forward KL divergence on the model's own output distribution.
+prompts using vLLM (fast batched generation), then loads both models on
+separate GPUs via HF and computes KL on-the-fly — no logprob caching.
 
 Datasets are loaded using the same logic as training (src.train.train_sft),
 and prompts are formatted with chat templates to match training exactly.
@@ -13,31 +13,30 @@ This gives two KL measurements:
     - KL_base: D_KL(π_base ‖ π_ft) on base model completions
     - KL_ft:   D_KL(π_base ‖ π_ft) on fine-tuned model completions
 
-Uses sequential processing to keep peak GPU memory at ~1 model:
-    Phase 1: Load base model, generate completions, cache logprobs on
-             base completions, free model.
-    Phase 2: Load fine-tuned model, generate completions, cache logprobs
-             on ft completions, free model.
-    Phase 3: Load base model again, cache logprobs on ft completions, free.
-    Phase 4: Load fine-tuned model again, cache logprobs on base completions, free.
-    Phase 5: Compute KL from cached logprobs.
+Phases (single checkpoint):
+    Phase 1: vLLM base model — batch generate completions, save sequences.
+    Phase 2: vLLM fine-tuned model — batch generate completions, save sequences.
+    Phase 3: Load both HF models (base on cuda:0, ft on cuda:1),
+             compute KL on-the-fly for both completion sets.
+
+Requires CUDA_VISIBLE_DEVICES to expose 2 GPUs.
 
 Usage:
     # Single checkpoint
-    python -m src.analysis.kl_divergence_generation \
+    CUDA_VISIBLE_DEVICES=4,5 python -m src.analysis.kl_divergence_generation \
         --base_model Qwen/Qwen3-4B-Base \
         --checkpoint results/sft/numinamath/Qwen3-4B-Base/checkpoint-100 \
         --dataset numinamath \
         --max_samples 200
 
     # All checkpoints in a run directory
-    python -m src.analysis.kl_divergence_generation \
+    CUDA_VISIBLE_DEVICES=4,5 python -m src.analysis.kl_divergence_generation \
         --run_dir results/sft/numinamath/Qwen3-4B-Base \
         --dataset numinamath \
         --max_samples 200
 
     # With custom chat template and generation parameters
-    python -m src.analysis.kl_divergence_generation \
+    CUDA_VISIBLE_DEVICES=4,5 python -m src.analysis.kl_divergence_generation \
         --base_model Qwen/Qwen3-4B \
         --checkpoint results/rl/deepmath/Qwen3-4B/checkpoint-200 \
         --dataset deepmath \
@@ -52,13 +51,13 @@ import json
 import os
 import re
 import tempfile
-from collections import defaultdict
 from pathlib import Path
 
 import torch
 import torch.nn.functional as F
-from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from vllm import LLM, SamplingParams
+from vllm.distributed.parallel_state import destroy_model_parallel
 
 from src.train.train_sft import (
     SYSTEM_PROMPT,
@@ -82,17 +81,21 @@ def load_prompts(
 
     Returns list of chat-templated prompt strings (system + user + generation prompt).
     """
+    # Load full dataset, then truncate to max_samples
     if dataset == "numinamath":
-        ds = load_numinamath(max_samples=max_samples, seed=seed)
+        ds = load_numinamath(max_samples=None, seed=seed)
     elif dataset == "deepmath":
-        ds = load_deepmath(max_samples=max_samples, seed=seed)
+        ds = load_deepmath(max_samples=None, seed=seed)
     elif dataset == "competition_math":
-        ds = load_competition_math(max_samples=max_samples, seed=seed)
+        ds = load_competition_math(max_samples=None, seed=seed)
     else:
         raise ValueError(
             f"Unknown dataset: {dataset}. "
             "Supported: numinamath, deepmath, competition_math"
         )
+
+    if max_samples is not None and len(ds) > max_samples:
+        ds = ds.select(range(max_samples))
 
     print(f"  Loaded {len(ds)} examples from {dataset}")
 
@@ -111,162 +114,140 @@ def load_prompts(
 
 
 # ---------------------------------------------------------------------------
-# Generation + logprob caching
+# vLLM generation
 # ---------------------------------------------------------------------------
 
-@torch.no_grad()
-def generate_and_cache_logprobs(
+def generate_completions(
     model_path: str,
     prompts: list[str],
     tokenizer: AutoTokenizer,
-    cache_dir: str,
-    generation_dir: str,
+    output_dir: str,
     max_new_tokens: int = 512,
     temperature: float = 0.6,
     top_p: float = 0.95,
-    dtype: torch.dtype = torch.bfloat16,
-) -> tuple[list[str], list[str]]:
-    """Load model, generate completions from prompts, cache logprobs, free model.
+    tensor_parallel_size: int = 1,
+    max_model_len: int | None = 4096,
+) -> None:
+    """Batch generate completions with vLLM, save sequences as meta files.
 
-    For each prompt:
-        1. Generate a completion.
-        2. Teacher-force the full (prompt + generation) sequence and save
-           log-probs over the vocabulary at each position.
-
-    Returns (generation_paths, logprob_cache_paths).
+    For each prompt, saves:
+        - gen_{i}.json: generation metadata (prompt, generation text, lengths)
+        - meta_{i}.pt: tokenized full sequence (input_ids, prompt_len) for
+                        downstream teacher-forcing
     """
-    print(f"  Loading model from {model_path} ...")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=dtype,
-        device_map="auto",
-        attn_implementation="flash_attention_2",
+    print(f"  Loading vLLM engine for {model_path} ...")
+    llm_kwargs = dict(
+        model=model_path,
+        tensor_parallel_size=tensor_parallel_size,
+        trust_remote_code=True,
+        dtype="bfloat16",
     )
-    model.eval()
+    if max_model_len is not None:
+        llm_kwargs["max_model_len"] = max_model_len
+    llm = LLM(**llm_kwargs)
 
-    gen_paths = []
-    cache_paths = []
+    sampling_params = SamplingParams(
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_new_tokens,
+    )
 
-    for i, prompt in enumerate(prompts):
-        prompt_enc = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)
-        prompt_ids = prompt_enc["input_ids"].to(model.device)
-        prompt_len = prompt_ids.shape[1]
+    print(f"  Generating {len(prompts)} completions ...")
+    outputs = llm.generate(prompts, sampling_params)
 
-        output_ids = model.generate(
-            prompt_ids,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            do_sample=temperature > 0,
-        )
-        full_ids = output_ids[0]
+    # Save each generation as meta file + json
+    for i, (prompt, output) in enumerate(zip(prompts, outputs)):
+        gen_text = output.outputs[0].text
+
+        # Tokenize full sequence (prompt + generation) for teacher-forcing
+        full_text = prompt + gen_text
+        full_ids = tokenizer.encode(full_text, add_special_tokens=False)
+        prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
+        prompt_len = len(prompt_ids)
+
+        # Save meta for teacher-forcing
+        meta_path = os.path.join(output_dir, f"meta_{i:06d}.pt")
+        torch.save({
+            "input_ids": torch.tensor(full_ids, dtype=torch.long),
+            "prompt_len": prompt_len,
+        }, meta_path)
 
         # Save generation metadata
-        gen_text = tokenizer.decode(full_ids[prompt_len:], skip_special_tokens=True)
-        gen_data = {
-            "index": i,
-            "prompt": prompt,
-            "generation": gen_text,
-            "prompt_len": prompt_len,
-            "total_len": full_ids.shape[0],
-            "gen_len": full_ids.shape[0] - prompt_len,
-        }
-        gen_path = os.path.join(generation_dir, f"gen_{i:06d}.json")
+        gen_path = os.path.join(output_dir, f"gen_{i:06d}.json")
         with open(gen_path, "w") as f:
-            json.dump(gen_data, f, indent=2)
-        gen_paths.append(gen_path)
+            json.dump({
+                "index": i,
+                "generation": gen_text,
+                "prompt_len": prompt_len,
+                "total_len": len(full_ids),
+                "gen_len": len(full_ids) - prompt_len,
+            }, f, indent=2)
 
-        # Teacher-force through full sequence to get logprobs
-        outputs = model(input_ids=full_ids.unsqueeze(0))
-        logprobs = F.log_softmax(outputs.logits[0, :-1, :].float(), dim=-1)
+    print(f"  Saved {len(outputs)} generations to {output_dir}")
 
-        cache_path = os.path.join(cache_dir, f"logprobs_{i:06d}.pt")
-        torch.save(logprobs.cpu(), cache_path)
-        cache_paths.append(cache_path)
-
-        # Save prompt_len and input_ids for later KL computation
-        meta_path = os.path.join(cache_dir, f"meta_{i:06d}.pt")
-        torch.save({"input_ids": full_ids.cpu(), "prompt_len": prompt_len}, meta_path)
-
-        if (i + 1) % 50 == 0 or i == len(prompts) - 1:
-            print(f"    Generated + cached {i + 1}/{len(prompts)} samples")
-
-    del model
+    # Free vLLM engine
+    destroy_model_parallel()
+    del llm
     torch.cuda.empty_cache()
 
-    return gen_paths, cache_paths
 
+# ---------------------------------------------------------------------------
+# Model loading
+# ---------------------------------------------------------------------------
 
-@torch.no_grad()
-def cache_logprobs_for_sequences(
+def load_model(
     model_path: str,
-    sequence_cache_dir: str,
-    output_cache_dir: str,
-    num_samples: int,
+    device: torch.device,
     dtype: torch.dtype = torch.bfloat16,
-) -> list[str]:
-    """Load a model and compute logprobs for pre-existing sequences.
-
-    Reads input_ids from meta files in sequence_cache_dir, computes logprobs
-    with the given model, saves to output_cache_dir.
-    """
-    print(f"  Loading model from {model_path} ...")
+) -> AutoModelForCausalLM:
+    """Load a model onto a specific GPU device."""
+    print(f"  Loading HF model from {model_path} -> {device} ...")
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=dtype,
-        device_map="auto",
-        attn_implementation="flash_attention_2",
+        device_map={"": device},
     )
     model.eval()
-
-    cache_paths = []
-    for i in range(num_samples):
-        meta_path = os.path.join(sequence_cache_dir, f"meta_{i:06d}.pt")
-        meta = torch.load(meta_path, weights_only=True)
-        input_ids = meta["input_ids"].unsqueeze(0).to(model.device)
-
-        outputs = model(input_ids=input_ids)
-        logprobs = F.log_softmax(outputs.logits[0, :-1, :].float(), dim=-1)
-
-        cache_path = os.path.join(output_cache_dir, f"logprobs_{i:06d}.pt")
-        torch.save(logprobs.cpu(), cache_path)
-        cache_paths.append(cache_path)
-
-        if (i + 1) % 50 == 0 or i == num_samples - 1:
-            print(f"    Cached {i + 1}/{num_samples} samples")
-
-    del model
-    torch.cuda.empty_cache()
-
-    return cache_paths
+    return model
 
 
 # ---------------------------------------------------------------------------
-# KL computation
+# Online KL computation from saved sequences (no logprob caching)
 # ---------------------------------------------------------------------------
 
-def compute_kl_from_caches(
-    base_cache_paths: list[str],
-    ft_cache_paths: list[str],
-    sequence_cache_dir: str,
+@torch.no_grad()
+def compute_kl_from_sequences(
+    base_model: AutoModelForCausalLM,
+    ft_model: AutoModelForCausalLM,
+    sequence_dir: str,
+    num_samples: int,
 ) -> dict:
-    """Compute per-token forward KL divergence from cached log-probs.
+    """Compute per-token forward KL divergence on-the-fly from saved sequences.
+
+    Reads input_ids from meta files in sequence_dir, forward passes both
+    models, computes KL per-token and discards full vocab distributions.
 
     KL(π_base ‖ π_ft) = Σ_v π_base(v) [log π_base(v) - log π_ft(v)]
-
     Only computed over completion tokens (after prompt_len).
     """
+    base_device = next(base_model.parameters()).device
+    ft_device = next(ft_model.parameters()).device
+
     per_sample = []
     all_token_kls = []
 
-    for i, (base_path, ft_path) in enumerate(zip(base_cache_paths, ft_cache_paths)):
-        base_logprobs = torch.load(base_path, weights_only=True)
-        ft_logprobs = torch.load(ft_path, weights_only=True)
-
-        meta_path = os.path.join(sequence_cache_dir, f"meta_{i:06d}.pt")
+    for i in range(num_samples):
+        meta_path = os.path.join(sequence_dir, f"meta_{i:06d}.pt")
         meta = torch.load(meta_path, weights_only=True)
         prompt_len = meta["prompt_len"]
-        seq_len = base_logprobs.shape[0]
+        input_ids = meta["input_ids"].unsqueeze(0)
+
+        # Forward pass on both models (each on its own GPU)
+        base_out = base_model(input_ids=input_ids.to(base_device))
+        ft_out = ft_model(input_ids=input_ids.to(ft_device))
+
+        # logits[:, :-1, :] predicts tokens at positions [1, 2, ..., seq_len-1]
+        seq_len = base_out.logits.shape[1] - 1
 
         start = max(prompt_len - 1, 0)
         if start >= seq_len:
@@ -279,12 +260,17 @@ def compute_kl_from_caches(
             })
             continue
 
-        base_lp = base_logprobs[start:]
-        ft_lp = ft_logprobs[start:]
+        # Only compute log-softmax on the completion slice to save memory
+        base_lp = F.log_softmax(
+            base_out.logits[0, start:seq_len, :].float(), dim=-1,
+        )
+        ft_lp = F.log_softmax(
+            ft_out.logits[0, start:seq_len, :].float().to(base_device), dim=-1,
+        )
 
         base_probs = base_lp.exp()
         token_kl = (base_probs * (base_lp - ft_lp)).sum(dim=-1)
-        token_kl = token_kl.clamp(min=0.0)
+        token_kl = token_kl.clamp(min=0.0).cpu()
 
         num_tokens = token_kl.shape[0]
         per_sample.append({
@@ -295,6 +281,9 @@ def compute_kl_from_caches(
             "sum_kl": token_kl.sum().item(),
         })
         all_token_kls.append(token_kl)
+
+        if (i + 1) % 50 == 0 or i == num_samples - 1:
+            print(f"    Processed {i + 1}/{num_samples} samples")
 
     if all_token_kls:
         flat_kls = torch.cat(all_token_kls)
@@ -383,6 +372,8 @@ def analyze_single(
     max_new_tokens: int = 512,
     temperature: float = 0.6,
     top_p: float = 0.95,
+    tensor_parallel_size: int = 1,
+    max_model_len: int | None = 4096,
     dtype: torch.dtype = torch.bfloat16,
     output_dir: str | None = None,
     seed: int = 42,
@@ -390,13 +381,11 @@ def analyze_single(
 ) -> dict:
     """Compute KL divergence using model-generated completions.
 
-    Phase 1: Base model generates completions + caches own logprobs.
-    Phase 2: Fine-tuned model generates completions + caches own logprobs.
-    Phase 3: Base model caches logprobs on ft completions.
-    Phase 4: Fine-tuned model caches logprobs on base completions.
-    Phase 5: Compute KL from caches.
+    Phase 1: vLLM base model — batch generate completions, save sequences.
+    Phase 2: vLLM fine-tuned model — batch generate completions, save sequences.
+    Phase 3: Load both HF models, compute KL on-the-fly for both completion sets.
     """
-    checkpoint_name = Path(checkpoint_path).name
+    checkpoint_name = checkpoint_path.replace("/", "_")
 
     print(f"Loading tokenizer from {base_model} ...")
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -418,56 +407,43 @@ def analyze_single(
 
     num_samples = len(prompts)
 
-    with tempfile.TemporaryDirectory(prefix="kl_gen_cache_") as cache_root:
-        base_gen_dir = os.path.join(cache_root, "base_gen")
-        base_lp_on_base_dir = os.path.join(cache_root, "base_lp_on_base")
-        ft_gen_dir = os.path.join(cache_root, "ft_gen")
-        ft_lp_on_ft_dir = os.path.join(cache_root, "ft_lp_on_ft")
-        base_lp_on_ft_dir = os.path.join(cache_root, "base_lp_on_ft")
-        ft_lp_on_base_dir = os.path.join(cache_root, "ft_lp_on_base")
-        for d in [base_gen_dir, base_lp_on_base_dir, ft_gen_dir, ft_lp_on_ft_dir,
-                  base_lp_on_ft_dir, ft_lp_on_base_dir]:
-            os.makedirs(d)
+    with tempfile.TemporaryDirectory(prefix="kl_gen_seq_") as cache_root:
+        base_seq_dir = os.path.join(cache_root, "base_seq")
+        ft_seq_dir = os.path.join(cache_root, "ft_seq")
+        os.makedirs(base_seq_dir)
+        os.makedirs(ft_seq_dir)
 
-        # Phase 1: Base model — generate + cache logprobs on own completions
-        print(f"\nPhase 1: Base model — generate + cache logprobs ...")
-        base_gen_paths, base_lp_on_base_paths = generate_and_cache_logprobs(
-            base_model, prompts, tokenizer, base_lp_on_base_dir, base_gen_dir,
+        # Phase 1: vLLM base model — generate completions
+        print(f"\nPhase 1: vLLM base model — generating completions ...")
+        generate_completions(
+            base_model, prompts, tokenizer, base_seq_dir,
             max_new_tokens=max_new_tokens, temperature=temperature,
-            top_p=top_p, dtype=dtype,
+            top_p=top_p, tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
         )
 
-        # Phase 2: Fine-tuned model — generate + cache logprobs on own completions
-        print(f"\nPhase 2: Fine-tuned model — generate + cache logprobs ...")
-        ft_gen_paths, ft_lp_on_ft_paths = generate_and_cache_logprobs(
-            checkpoint_path, prompts, tokenizer, ft_lp_on_ft_dir, ft_gen_dir,
+        # Phase 2: vLLM fine-tuned model — generate completions
+        print(f"\nPhase 2: vLLM fine-tuned model — generating completions ...")
+        generate_completions(
+            checkpoint_path, prompts, tokenizer, ft_seq_dir,
             max_new_tokens=max_new_tokens, temperature=temperature,
-            top_p=top_p, dtype=dtype,
+            top_p=top_p, tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
         )
 
-        # Phase 3: Base model — cache logprobs on ft completions
-        print(f"\nPhase 3: Base model — logprobs on fine-tuned completions ...")
-        base_lp_on_ft_paths = cache_logprobs_for_sequences(
-            base_model, ft_lp_on_ft_dir, base_lp_on_ft_dir, num_samples, dtype=dtype,
-        )
+        # Phase 3: Load both HF models, compute KL on-the-fly
+        print(f"\nPhase 3: Loading both HF models ...")
+        base_mod = load_model(base_model, device=torch.device("cuda:0"), dtype=dtype)
+        ft_mod = load_model(checkpoint_path, device=torch.device("cuda:1"), dtype=dtype)
 
-        # Phase 4: Fine-tuned model — cache logprobs on base completions
-        print(f"\nPhase 4: Fine-tuned model — logprobs on base completions ...")
-        ft_lp_on_base_paths = cache_logprobs_for_sequences(
-            checkpoint_path, base_lp_on_base_dir, ft_lp_on_base_dir, num_samples, dtype=dtype,
-        )
+        print(f"\n  Computing KL on base completions ...")
+        kl_base = compute_kl_from_sequences(base_mod, ft_mod, base_seq_dir, num_samples)
 
-        # Phase 5: Compute KL
-        print(f"\nPhase 5: Computing KL divergence ...")
+        print(f"\n  Computing KL on ft completions ...")
+        kl_ft = compute_kl_from_sequences(base_mod, ft_mod, ft_seq_dir, num_samples)
 
-        # KL on base completions: D_KL(π_base ‖ π_ft) on sequences from π_base
-        kl_base = compute_kl_from_caches(
-            base_lp_on_base_paths, ft_lp_on_base_paths, base_lp_on_base_dir,
-        )
-        # KL on ft completions: D_KL(π_base ‖ π_ft) on sequences from π_ft
-        kl_ft = compute_kl_from_caches(
-            base_lp_on_ft_paths, ft_lp_on_ft_paths, ft_lp_on_ft_dir,
-        )
+        del base_mod, ft_mod
+        torch.cuda.empty_cache()
 
     results = {
         "base_completions": kl_base,
@@ -507,6 +483,8 @@ def analyze_run(
     max_new_tokens: int = 512,
     temperature: float = 0.6,
     top_p: float = 0.95,
+    tensor_parallel_size: int = 1,
+    max_model_len: int | None = 4096,
     dtype: torch.dtype = torch.bfloat16,
     output_dir: str | None = None,
     seed: int = 42,
@@ -514,8 +492,9 @@ def analyze_run(
 ) -> list[dict]:
     """Compute generation-based KL for all checkpoints in a training run.
 
-    Base model generations + logprobs are cached once (phases 1 & 3 reuse).
-    For each checkpoint, only the fine-tuned model's phases run fresh.
+    Base model completions (vLLM) are generated once. Per checkpoint:
+    vLLM generates ft completions, then both HF models are loaded on
+    separate GPUs and KL is computed on-the-fly for both completion sets.
     """
     run_path = Path(run_dir)
 
@@ -563,18 +542,17 @@ def analyze_run(
     all_results = []
     trajectory = []
 
-    with tempfile.TemporaryDirectory(prefix="kl_gen_cache_") as cache_root:
-        # Phase 1 (one-time): Base model — generate + cache logprobs
-        base_gen_dir = os.path.join(cache_root, "base_gen")
-        base_lp_on_base_dir = os.path.join(cache_root, "base_lp_on_base")
-        os.makedirs(base_gen_dir)
-        os.makedirs(base_lp_on_base_dir)
+    with tempfile.TemporaryDirectory(prefix="kl_gen_seq_") as cache_root:
+        # One-time: base model generation
+        base_seq_dir = os.path.join(cache_root, "base_seq")
+        os.makedirs(base_seq_dir)
 
-        print(f"\nBase model — generate + cache logprobs (one-time) ...")
-        base_gen_paths, base_lp_on_base_paths = generate_and_cache_logprobs(
-            base_model, prompts, tokenizer, base_lp_on_base_dir, base_gen_dir,
+        print(f"\nvLLM base model — generating completions (one-time) ...")
+        generate_completions(
+            base_model, prompts, tokenizer, base_seq_dir,
             max_new_tokens=max_new_tokens, temperature=temperature,
-            top_p=top_p, dtype=dtype,
+            top_p=top_p, tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
         )
 
         for ckpt_path, step in checkpoints:
@@ -583,40 +561,31 @@ def analyze_run(
             print(f"--- {ckpt_name} (step {step}) ---")
             print(f"{'='*50}")
 
-            ft_gen_dir = os.path.join(cache_root, f"ft_gen_{ckpt_name}")
-            ft_lp_on_ft_dir = os.path.join(cache_root, f"ft_lp_on_ft_{ckpt_name}")
-            base_lp_on_ft_dir = os.path.join(cache_root, f"base_lp_on_ft_{ckpt_name}")
-            ft_lp_on_base_dir = os.path.join(cache_root, f"ft_lp_on_base_{ckpt_name}")
-            for d in [ft_gen_dir, ft_lp_on_ft_dir, base_lp_on_ft_dir, ft_lp_on_base_dir]:
-                os.makedirs(d)
+            ft_seq_dir = os.path.join(cache_root, f"ft_seq_{ckpt_name}")
+            os.makedirs(ft_seq_dir)
 
-            # Fine-tuned model — generate + cache logprobs on own completions
-            print(f"\n  Fine-tuned model — generate + cache logprobs ...")
-            ft_gen_paths, ft_lp_on_ft_paths = generate_and_cache_logprobs(
-                ckpt_path, prompts, tokenizer, ft_lp_on_ft_dir, ft_gen_dir,
+            # vLLM: generate ft completions
+            print(f"\n  vLLM fine-tuned model — generating completions ...")
+            generate_completions(
+                ckpt_path, prompts, tokenizer, ft_seq_dir,
                 max_new_tokens=max_new_tokens, temperature=temperature,
-                top_p=top_p, dtype=dtype,
+                top_p=top_p, tensor_parallel_size=tensor_parallel_size,
+                max_model_len=max_model_len,
             )
 
-            # Base model — cache logprobs on ft completions
-            print(f"\n  Base model — logprobs on fine-tuned completions ...")
-            base_lp_on_ft_paths = cache_logprobs_for_sequences(
-                base_model, ft_lp_on_ft_dir, base_lp_on_ft_dir, num_samples, dtype=dtype,
-            )
+            # Load both HF models, compute KL on-the-fly
+            print(f"\n  Loading both HF models ...")
+            base_mod = load_model(base_model, device=torch.device("cuda:0"), dtype=dtype)
+            ft_mod = load_model(ckpt_path, device=torch.device("cuda:1"), dtype=dtype)
 
-            # Fine-tuned model — cache logprobs on base completions
-            print(f"\n  Fine-tuned model — logprobs on base completions ...")
-            ft_lp_on_base_paths = cache_logprobs_for_sequences(
-                ckpt_path, base_lp_on_base_dir, ft_lp_on_base_dir, num_samples, dtype=dtype,
-            )
+            print(f"\n  Computing KL on base completions ...")
+            kl_base = compute_kl_from_sequences(base_mod, ft_mod, base_seq_dir, num_samples)
 
-            # Compute KL
-            kl_base = compute_kl_from_caches(
-                base_lp_on_base_paths, ft_lp_on_base_paths, base_lp_on_base_dir,
-            )
-            kl_ft = compute_kl_from_caches(
-                base_lp_on_ft_paths, ft_lp_on_ft_paths, ft_lp_on_ft_dir,
-            )
+            print(f"\n  Computing KL on ft completions ...")
+            kl_ft = compute_kl_from_sequences(base_mod, ft_mod, ft_seq_dir, num_samples)
+
+            del base_mod, ft_mod
+            torch.cuda.empty_cache()
 
             results = {
                 "base_completions": kl_base,
@@ -658,10 +627,9 @@ def analyze_run(
                 "ft_completions_mean_sample_kl": kl_ft["aggregate"].get("mean_sample_kl", 0.0),
             })
 
-            # Clean up ft caches for this checkpoint
-            for d in [ft_gen_dir, ft_lp_on_ft_dir, base_lp_on_ft_dir, ft_lp_on_base_dir]:
-                for f_path in Path(d).iterdir():
-                    f_path.unlink()
+            # Clean up ft sequences for this checkpoint
+            for f_path in Path(ft_seq_dir).iterdir():
+                f_path.unlink()
 
     traj_out = os.path.join(output_dir or run_dir, "kl_gen_trajectory.json")
     with open(traj_out, "w") as f:
@@ -679,7 +647,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Compute forward KL divergence D_KL(π_base ‖ π_ft) using "
-            "model-generated completions from both base and fine-tuned models"
+            "model-generated completions (vLLM) with HF teacher-forced logprobs"
         )
     )
 
@@ -698,13 +666,17 @@ def main():
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Maximum number of samples to evaluate")
 
-    # Generation
+    # Generation (vLLM)
     parser.add_argument("--max_new_tokens", type=int, default=512,
                         help="Maximum new tokens to generate per sample (default: 512)")
     parser.add_argument("--temperature", type=float, default=0.6,
                         help="Sampling temperature (default: 0.6, 0 for greedy)")
     parser.add_argument("--top_p", type=float, default=0.95,
                         help="Top-p nucleus sampling (default: 0.95)")
+    parser.add_argument("--tensor_parallel_size", type=int, default=1,
+                        help="vLLM tensor parallel size (default: 1)")
+    parser.add_argument("--max_model_len", type=int, default=4096,
+                        help="Max context length for vLLM KV cache (default: 4096, 0 for model default)")
 
     # Options
     parser.add_argument("--output_dir", type=str, default="results/kl_divergence",
@@ -717,6 +689,7 @@ def main():
     args = parser.parse_args()
 
     dtype = torch.bfloat16
+    max_model_len = args.max_model_len if args.max_model_len > 0 else None
 
     if args.run_dir:
         analyze_run(
@@ -726,6 +699,8 @@ def main():
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
+            tensor_parallel_size=args.tensor_parallel_size,
+            max_model_len=max_model_len,
             dtype=dtype,
             output_dir=args.output_dir,
             seed=args.seed,
@@ -740,6 +715,8 @@ def main():
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
+            tensor_parallel_size=args.tensor_parallel_size,
+            max_model_len=max_model_len,
             dtype=dtype,
             output_dir=args.output_dir,
             seed=args.seed,
