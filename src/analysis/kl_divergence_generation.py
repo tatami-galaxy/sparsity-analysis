@@ -59,7 +59,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.distributed.parallel_state import destroy_model_parallel
 
-from src.train.train_sft import (
+from src.train.math.train_sft import (
     SYSTEM_PROMPT,
     load_numinamath,
     load_deepmath,

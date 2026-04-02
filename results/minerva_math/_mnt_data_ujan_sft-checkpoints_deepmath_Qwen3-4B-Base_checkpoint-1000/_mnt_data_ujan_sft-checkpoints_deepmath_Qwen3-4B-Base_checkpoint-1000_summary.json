@@ -1,0 +1,21 @@
+{
+  "model": "/mnt/data/ujan/sft-checkpoints/deepmath/Qwen3-4B-Base/checkpoint-1000",
+  "dataset_size": 272,
+  "overall_accuracy": 0.17279411764705882,
+  "elapsed_s": 56.44129276275635,
+  "by_level": {
+    "0": {
+      "correct": 47,
+      "total": 272,
+      "accuracy": 0.17279411764705882
+    }
+  },
+  "by_subject": {
+    "": {
+      "correct": 47,
+      "total": 272,
+      "accuracy": 0.17279411764705882
+    }
+  },
+  "extraction_failures": 146
+}

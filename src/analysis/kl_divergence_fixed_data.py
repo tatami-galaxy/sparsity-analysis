@@ -49,7 +49,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.train.train_sft import (
+from src.train.math.train_sft import (
     SYSTEM_PROMPT,
     load_numinamath,
     load_deepmath,

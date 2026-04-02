@@ -30,9 +30,9 @@ import torch
 from datasets import load_dataset
 from vllm import LLM, SamplingParams
 
-from src.eval.run_eval import extract_boxed_answer, is_equiv
-from src.train.train_sdft import TEACHER_TEMPLATE_1, TEACHER_TEMPLATE_2
-from src.train.train_sft import SYSTEM_PROMPT
+from src.eval.run_math_eval import extract_boxed_answer, is_equiv
+from src.train.math.train_sdft import TEACHER_TEMPLATE_1, TEACHER_TEMPLATE_2
+from src.train.math.train_sft import SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
 # Copying detection
