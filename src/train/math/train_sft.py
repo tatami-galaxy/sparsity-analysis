@@ -485,7 +485,7 @@ def train(args):
     model.generation_config.top_p = None
 
     # Set output dir
-    args.output_dir = args.output_dir + '/' + args.dataset + '/' + args.model.split('/')[-1]
+    args.output_dir = args.output_dir + '/' + args.dataset + '/' + args.model.replace('/', '_')
 
     # Save initial weights
     save_theta_init(model, args.output_dir)

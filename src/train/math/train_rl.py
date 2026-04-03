@@ -317,7 +317,7 @@ def train(args):
     )
 
     # Save initial weights before any training (skip for LoRA)
-    args.output_dir = args.output_dir + '/' + args.dataset + '/' + args.model.split('/')[-1]
+    args.output_dir = args.output_dir + '/' + args.dataset + '/' + args.model.replace('/', '_')
     if not args.use_lora:
         save_theta_init(model, args.output_dir)
 
